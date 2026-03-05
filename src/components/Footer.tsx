@@ -16,7 +16,7 @@ export default function Footer() {
           <p style={{ fontSize: 13, lineHeight: 1.6 }}>Wholesale essentials, hardware, and more. Built for fast ordering.</p>
           <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><MapPin size={14} /> Vereeniging Industrial</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Phone size={14} /> 063 903 4514</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Phone size={14} /> 084 988 8800</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Clock size={14} /> Mon–Sat, 7am–5pm</span>
           </div>
         </div>

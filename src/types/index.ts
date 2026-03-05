@@ -19,6 +19,7 @@ export interface Product {
   createdAt: string;
 }
 
+
 export interface Category {
   id: string;
   name: string;

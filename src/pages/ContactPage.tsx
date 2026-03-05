@@ -80,17 +80,20 @@ export default function ContactPage() {
                 </h3>
 
                 <p>
-                  <strong>Phone:</strong> 063 903 4514
+                  <strong>Phone:</strong> 084 988 8800
                 </p>
                 <p>
-                  <strong>Email:</strong> sales@superumart.co.za
+                  <strong>Email:</strong> superumart.web@gmail.com
                 </p>
                 <p>
                   <strong>Location:</strong> Vereeniging Industrial Area
                 </p>
-                <p>
-                  <strong>Hours:</strong> Mon – Sat | 08:00 – 17:00
-                </p>
+                <div style={{ lineHeight: 1.8 }}>
+                  <p><strong>Hours:</strong> </p>
+                  <p>Monday–Friday | 07:00 – 17:00</p>
+                  <p>Saturday | 08:00 – 14:00</p>
+                  <p>Sunday/ Public Holidays | 08:00 – 14:00</p>
+                </div>
 
                 <p style={{ marginTop: 20, color: "#666" }}>
                   We operate strictly as a wholesale supplier. Business registration details may be
