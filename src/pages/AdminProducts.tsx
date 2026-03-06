@@ -15,21 +15,14 @@ type Product = {
   id: string | number;
   name: string;
   description?: string;
-  category?: string; // we will treat this as a category "id"/slug ideally
-  price?: number; // assuming ZAR
+  category?: string;
+  price?: number;
   onSale?: boolean;
   featured?: boolean;
 };
 
 const ACCENT_ORANGE = "#f97316";
 
-/**
- * ✅ Permanent categories (always show in sidebar and grouping),
- * even when there are zero products.
- *
- * IMPORTANT: These ids are what we filter by.
- * Ideally your product.category should store one of these ids.
- */
 const PERMANENT_CATEGORIES = [
   { id: "kitchen-appliances", name: "Kitchen Appliances" },
   { id: "tools", name: "Tools" },
@@ -77,24 +70,17 @@ function TogglePill({
   );
 }
 
-/**
- * Normalize any incoming product category to one of our permanent ids when possible.
- * This keeps filtering/grouping sane even if older products stored display names.
- */
 function normalizeCategoryId(raw?: string): CategoryId | "Uncategorized" {
   const v = String(raw ?? "").trim();
   if (!v) return "Uncategorized";
 
-  // direct match on id
   const direct = PERMANENT_CATEGORIES.find((c) => c.id === v);
   if (direct) return direct.id;
 
-  // match on display name (case-insensitive)
   const lower = v.toLowerCase();
   const byName = PERMANENT_CATEGORIES.find((c) => c.name.toLowerCase() === lower);
   if (byName) return byName.id;
 
-  // loose matching for common variants
   const simplified = lower.replace(/&/g, "and").replace(/\s+/g, " ").trim();
   const byLoose = PERMANENT_CATEGORIES.find(
     (c) =>
@@ -117,7 +103,6 @@ function categoryLabel(id: CategoryId | "Uncategorized"): string {
 export default function AdminProducts() {
   const navigate = useNavigate();
 
-  // ✅ Pull real actions from StoreContext (Supabase-wired)
   const {
     products,
     updateProduct,
@@ -133,22 +118,15 @@ export default function AdminProducts() {
   const [query, setQuery] = useState("");
   const [onSaleOnly, setOnSaleOnly] = useState(false);
   const [featuredOnly, setFeaturedOnly] = useState(false);
-
-  // ✅ UI feedback so you actually see when Supabase rejects something
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  /**
-   * ✅ Sidebar categories must always show:
-   * we use the permanent category list (plus optional Uncategorized).
-   */
   const categories = useMemo(() => {
     return [...PERMANENT_CATEGORIES.map((c) => c.id), "Uncategorized"] as Array<
       CategoryId | "Uncategorized"
     >;
   }, []);
 
-  // Category toggles (default ON)
   const [categoryOn, setCategoryOn] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -158,7 +136,6 @@ export default function AdminProducts() {
         const key = String(c);
         if (next[key] === undefined) next[key] = true;
       });
-      // keep only known categories
       Object.keys(next).forEach((k) => {
         if (!categories.map(String).includes(k)) delete next[k];
       });
@@ -166,7 +143,6 @@ export default function AdminProducts() {
     });
   }, [categories]);
 
-  // Collapsing categories (for main grouped view)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -183,7 +159,6 @@ export default function AdminProducts() {
     });
   }, [categories]);
 
-  // Toggle handlers (NO URL/SEARCH PARAMS ANYMORE)
   const toggleOnSaleOnly = () => {
     setOnSaleOnly((prev) => {
       const next = !prev;
@@ -205,13 +180,11 @@ export default function AdminProducts() {
   const filtered = useMemo(() => {
     let list = [...(products || [])];
 
-    // category filter (using normalized category id)
     list = list.filter((p) => {
       const catId = normalizeCategoryId(p.category);
       return categoryOn[String(catId)] !== false;
     });
 
-    // search
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter((p) => {
@@ -223,7 +196,6 @@ export default function AdminProducts() {
       });
     }
 
-    // toggles
     if (onSaleOnly) list = list.filter((p) => !!p.onSale);
     if (featuredOnly) list = list.filter((p) => !!p.featured);
 
@@ -247,7 +219,6 @@ export default function AdminProducts() {
       map.set(k, arr);
     }
 
-    // Sort by the permanent category order, and place Uncategorized last.
     const order = new Map<string, number>();
     PERMANENT_CATEGORIES.forEach((c, idx) => order.set(c.id, idx));
     order.set("Uncategorized", 999);
@@ -277,9 +248,12 @@ export default function AdminProducts() {
     setAllCategories(true);
   };
 
-  // ✅ Real actions
   const onAddProduct = () => navigate("/admin/products/new");
-  const onEdit = (id: Product["id"]) => navigate(`/admin/products/${id}`);
+
+  // FIXED: send edit to a dedicated edit route instead of /admin/products/:id
+  const onEdit = (id: Product["id"]) => {
+    navigate(`/admin/products/edit/${id}`);
+  };
 
   const onDelete = async (id: Product["id"]) => {
     setActionError(null);
@@ -297,7 +271,6 @@ export default function AdminProducts() {
     }
   };
 
-  // ✅ Quick toggles that actually SAVE to Supabase (helps you confirm saving works)
   const toggleProductOnSale = async (p: Product) => {
     setActionError(null);
     try {
@@ -327,7 +300,6 @@ export default function AdminProducts() {
   return (
     <div className="w-full">
       <div className="flex gap-6">
-        {/* Sidebar */}
         <aside
           className="w-[320px] shrink-0 rounded-2xl p-5"
           style={{
@@ -377,7 +349,6 @@ export default function AdminProducts() {
 
           <div className="mt-7 text-white font-extrabold text-lg">Filter by</div>
 
-          {/* On Sale only */}
           <div
             className="mt-3 rounded-2xl p-4"
             style={{
@@ -394,7 +365,6 @@ export default function AdminProducts() {
             </div>
           </div>
 
-          {/* Currently featured */}
           <div
             className="mt-3 rounded-2xl p-4"
             style={{
@@ -411,7 +381,6 @@ export default function AdminProducts() {
             </div>
           </div>
 
-          {/* Categories */}
           <div className="mt-7 flex items-center justify-between">
             <div className="text-white font-extrabold text-lg">Categories</div>
             <div className="text-white/80 text-sm font-extrabold">
@@ -488,7 +457,6 @@ export default function AdminProducts() {
           </button>
         </aside>
 
-        {/* Main */}
         <main className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
@@ -512,7 +480,6 @@ export default function AdminProducts() {
             </button>
           </div>
 
-          {/* ✅ errors + loading */}
           {actionError && (
             <div
               className="mt-4 rounded-xl px-4 py-3 text-sm font-bold"
@@ -530,7 +497,6 @@ export default function AdminProducts() {
             <div className="mt-6 text-white/70 text-sm">Loading products…</div>
           )}
 
-          {/* Groups */}
           <div className="mt-5 space-y-6">
             {!loadingProducts && grouped.length === 0 ? (
               <section
@@ -565,7 +531,6 @@ export default function AdminProducts() {
                       boxShadow: "0 18px 50px rgba(0,0,0,0.22)",
                     }}
                   >
-                    {/* Category header */}
                     <div
                       className="px-6 py-5 flex items-center justify-between gap-4"
                       style={{
@@ -616,7 +581,6 @@ export default function AdminProducts() {
 
                     {!isCollapsed && (
                       <div className="p-6">
-                        {/* Table header */}
                         <div
                           className="grid grid-cols-[1fr_140px_220px_170px] gap-4 pb-3 text-xs font-extrabold uppercase tracking-wide"
                           style={{
@@ -630,7 +594,6 @@ export default function AdminProducts() {
                           <div className="text-right">Actions</div>
                         </div>
 
-                        {/* Rows */}
                         <div className="mt-3 space-y-3">
                           {items.map((p) => {
                             const price = typeof p.price === "number" ? p.price : 0;
@@ -661,7 +624,6 @@ export default function AdminProducts() {
                                   {moneyZAR(price)}
                                 </div>
 
-                                {/* ✅ Quick toggles that SAVE */}
                                 <div className="pt-0.5 flex items-center gap-2 flex-wrap">
                                   <button
                                     type="button"

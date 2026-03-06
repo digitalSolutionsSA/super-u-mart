@@ -1,13 +1,15 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Camera, ImagePlus, Save, X } from "lucide-react";
 import { useStore } from "../context/StoreContext";
+import { supabase } from "../lib/supabase";
 
 const DARK_BLUE = "#111d5e";
 const ACCENT_ORANGE = "#f97316";
+const STORAGE_BUCKET = "product-images";
 
 /**
- * ✅ ONLY categories allowed (exactly what you asked for).
+ * ✅ ONLY categories allowed.
  * These ids are what will be stored in product.category.
  */
 const PERMANENT_CATEGORIES = [
@@ -22,31 +24,86 @@ const PERMANENT_CATEGORIES = [
 
 type CategoryId = (typeof PERMANENT_CATEGORIES)[number]["id"];
 
-/**
- * If older products stored names like "Tools" instead of "tools",
- * normalize them so edit mode selects the right option.
- */
 function normalizeCategoryId(raw?: string): CategoryId | "" {
   const v = String(raw ?? "").trim();
   if (!v) return "";
 
-  // direct match
   const direct = PERMANENT_CATEGORIES.find((c) => c.id === v);
   if (direct) return direct.id;
 
-  // match by display name (case-insensitive)
   const lower = v.toLowerCase();
   const byName = PERMANENT_CATEGORIES.find((c) => c.name.toLowerCase() === lower);
   if (byName) return byName.id;
 
-  // no match
   return "";
+}
+
+function normalizeImages(input: any, fallbackImageUrl?: string | null): string[] {
+  const out: string[] = [];
+
+  if (Array.isArray(input)) {
+    for (const item of input) {
+      if (typeof item === "string" && item.trim()) out.push(item.trim());
+      else if (item && typeof item === "object") {
+        if (typeof item.url === "string" && item.url.trim()) out.push(item.url.trim());
+        if (typeof item.src === "string" && item.src.trim()) out.push(item.src.trim());
+      }
+    }
+  } else if (typeof input === "string" && input.trim()) {
+    const raw = input.trim();
+    try {
+      const parsed = JSON.parse(raw);
+      return normalizeImages(parsed, fallbackImageUrl);
+    } catch {
+      out.push(raw);
+    }
+  } else if (input && typeof input === "object") {
+    for (const value of Object.values(input)) {
+      if (typeof value === "string" && value.trim()) out.push(value.trim());
+      else if (value && typeof value === "object") {
+        if (typeof (value as any).url === "string" && (value as any).url.trim()) {
+          out.push((value as any).url.trim());
+        }
+        if (typeof (value as any).src === "string" && (value as any).src.trim()) {
+          out.push((value as any).src.trim());
+        }
+      }
+    }
+  }
+
+  if (out.length === 0 && typeof fallbackImageUrl === "string" && fallbackImageUrl.trim()) {
+    out.push(fallbackImageUrl.trim());
+  }
+
+  return Array.from(new Set(out));
+}
+
+async function uploadFileToSupabase(file: File): Promise<string> {
+  const ext = file.name.split(".").pop() || "jpg";
+  const safeExt = ext.toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const filePath = `products/${crypto.randomUUID()}.${safeExt}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(filePath, file, {
+      upsert: false,
+      contentType: file.type || undefined,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+
+  if (!data?.publicUrl) {
+    throw new Error("Could not get public URL for uploaded image.");
+  }
+
+  return data.publicUrl;
 }
 
 export default function AdminProductForm() {
   const navigate = useNavigate();
   const { id } = useParams();
-
   const { products, addProduct, updateProduct } = useStore() as any;
 
   const existing = useMemo(() => {
@@ -54,83 +111,171 @@ export default function AdminProductForm() {
     return (products ?? []).find((p: any) => String(p.id) === String(id)) ?? null;
   }, [id, products]);
 
-  const [name, setName] = useState(existing?.name ?? "");
-  const [price, setPrice] = useState<number>(existing?.price ?? 0);
-  const [description, setDescription] = useState(existing?.description ?? "");
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState<number>(0);
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState<string>("");
 
-  // ✅ normalize for edit mode
-  const [category, setCategory] = useState<string>(normalizeCategoryId(existing?.category));
+  const [onSale, setOnSale] = useState<boolean>(false);
+  const [salePrice, setSalePrice] = useState<number | "">("");
 
-  const [onSale, setOnSale] = useState<boolean>(!!existing?.onSale);
-  const [salePrice, setSalePrice] = useState<number | "">(existing?.salePrice ?? "");
+  const [lengthCm, setLengthCm] = useState<number | "">("");
+  const [widthCm, setWidthCm] = useState<number | "">("");
+  const [heightCm, setHeightCm] = useState<number | "">("");
+  const [weightKg, setWeightKg] = useState<number | "">("");
 
-  const [lengthCm, setLengthCm] = useState<number | "">(existing?.lengthCm ?? "");
-  const [widthCm, setWidthCm] = useState<number | "">(existing?.widthCm ?? "");
-  const [heightCm, setHeightCm] = useState<number | "">(existing?.heightCm ?? "");
-  const [weightKg, setWeightKg] = useState<number | "">(existing?.weightKg ?? "");
+  // Existing/saved remote URLs
+  const [images, setImages] = useState<string[]>([]);
+  // New files selected this session
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  // Local previews for pending files
+  const [pendingPreviews, setPendingPreviews] = useState<string[]>([]);
 
-  const [images, setImages] = useState<string[]>(existing?.images ?? []);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!existing) {
+      if (!id) {
+        setName("");
+        setPrice(0);
+        setDescription("");
+        setCategory("");
+        setOnSale(false);
+        setSalePrice("");
+        setLengthCm("");
+        setWidthCm("");
+        setHeightCm("");
+        setWeightKg("");
+        setImages([]);
+        setPendingFiles([]);
+        setPendingPreviews([]);
+      }
+      return;
+    }
+
+    setName(existing?.name ?? "");
+    setPrice(Number(existing?.price ?? 0));
+    setDescription(existing?.description ?? "");
+    setCategory(normalizeCategoryId(existing?.category));
+    setOnSale(!!existing?.onSale);
+    setSalePrice(existing?.salePrice ?? "");
+    setLengthCm(existing?.lengthCm ?? "");
+    setWidthCm(existing?.widthCm ?? "");
+    setHeightCm(existing?.heightCm ?? "");
+    setWeightKg(existing?.weightKg ?? "");
+    setImages(normalizeImages(existing?.images, existing?.image ?? existing?.image_url ?? null));
+    setPendingFiles([]);
+    setPendingPreviews([]);
+  }, [existing, id]);
+
+  useEffect(() => {
+    return () => {
+      pendingPreviews.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {}
+      });
+    };
+  }, [pendingPreviews]);
 
   const onPickImages = (files: FileList | null) => {
     if (!files?.length) return;
-    const urls = Array.from(files).map((f) => URL.createObjectURL(f));
-    setImages((prev) => [...prev, ...urls]);
+
+    const picked = Array.from(files);
+    const previews = picked.map((file) => URL.createObjectURL(file));
+
+    setPendingFiles((prev) => [...prev, ...picked]);
+    setPendingPreviews((prev) => [...prev, ...previews]);
   };
 
-  const removeImage = (url: string) => {
+  const removeExistingImage = (url: string) => {
     setImages((prev) => prev.filter((x) => x !== url));
-    try {
-      URL.revokeObjectURL(url);
-    } catch {}
   };
 
-  const onSave = (e: React.FormEvent) => {
+  const removePendingImage = (previewUrl: string, index: number) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+    setPendingPreviews((prev) => {
+      const target = prev[index];
+      if (target?.startsWith("blob:")) {
+        try {
+          URL.revokeObjectURL(target);
+        } catch {}
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const onSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!name.trim()) {
       alert("Name is required.");
       return;
     }
+
     if (!Number.isFinite(Number(price)) || Number(price) <= 0) {
       alert("Price must be a positive number.");
       return;
     }
+
     if (!category) {
       alert("Please select a category.");
       return;
     }
 
-    const payload: any = {
-      id: existing?.id ?? crypto.randomUUID(),
-      name: name.trim(),
-      price: Number(price),
-      description: description.trim(),
+    try {
+      setSaving(true);
 
-      // ✅ store ONLY allowed category ids
-      category: String(category),
+      let uploadedUrls: string[] = [];
 
-      onSale,
-      salePrice: onSale && salePrice !== "" ? Number(salePrice) : undefined,
+      if (pendingFiles.length > 0) {
+        uploadedUrls = await Promise.all(pendingFiles.map(uploadFileToSupabase));
+      }
 
-      lengthCm: lengthCm === "" ? undefined : Number(lengthCm),
-      widthCm: widthCm === "" ? undefined : Number(widthCm),
-      heightCm: heightCm === "" ? undefined : Number(heightCm),
-      weightKg: weightKg === "" ? undefined : Number(weightKg),
+      const finalImages = [...images, ...uploadedUrls];
 
-      images,
-    };
+      const payload: any = {
+        name: name.trim(),
+        price: Number(price),
+        description: description.trim(),
+        category: String(category),
 
-    if (existing) updateProduct?.(payload);
-    else addProduct?.(payload);
+        onSale,
+        salePrice: onSale && salePrice !== "" ? Number(salePrice) : undefined,
 
-    navigate("/admin/products");
+        lengthCm: lengthCm === "" ? undefined : Number(lengthCm),
+        widthCm: widthCm === "" ? undefined : Number(widthCm),
+        heightCm: heightCm === "" ? undefined : Number(heightCm),
+        weightKg: weightKg === "" ? undefined : Number(weightKg),
+
+        images: finalImages,
+        image_url: finalImages[0] ?? null,
+      };
+
+      if (existing) {
+        await updateProduct(String(existing.id), payload);
+      } else {
+        await addProduct(payload);
+      }
+
+      navigate("/admin/products");
+    } catch (err) {
+      console.error("Save product failed:", err);
+      alert("Failed to save product or upload images.");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const gallery = [
+    ...images.map((url) => ({ type: "existing" as const, url })),
+    ...pendingPreviews.map((url, index) => ({ type: "pending" as const, url, index })),
+  ];
 
   return (
     <form onSubmit={onSave}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          {/* ✅ white heading */}
           <h1 className="text-2xl font-extrabold text-white">
             {existing ? "Edit Product" : "Add Product"}
           </h1>
@@ -144,6 +289,7 @@ export default function AdminProductForm() {
             type="button"
             onClick={() => navigate("/admin/products")}
             className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+            disabled={saving}
           >
             <X size={16} />
             Cancel
@@ -151,17 +297,17 @@ export default function AdminProductForm() {
 
           <button
             type="submit"
-            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white"
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             style={{ backgroundColor: ACCENT_ORANGE }}
           >
             <Save size={16} />
-            Save
+            {saving ? "Saving..." : "Save"}
           </button>
         </div>
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
-        {/* Main */}
         <div className="rounded-2xl border bg-white p-4 shadow-sm md:p-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Product Name">
@@ -254,6 +400,7 @@ export default function AdminProductForm() {
                   className="w-full rounded-xl border px-3 py-2 text-sm"
                 />
               </Field>
+
               <Field label="Width (cm)">
                 <input
                   type="number"
@@ -264,6 +411,7 @@ export default function AdminProductForm() {
                   className="w-full rounded-xl border px-3 py-2 text-sm"
                 />
               </Field>
+
               <Field label="Height (cm)">
                 <input
                   type="number"
@@ -274,6 +422,7 @@ export default function AdminProductForm() {
                   className="w-full rounded-xl border px-3 py-2 text-sm"
                 />
               </Field>
+
               <Field label="Weight (kg)">
                 <input
                   type="number"
@@ -288,7 +437,6 @@ export default function AdminProductForm() {
           </div>
         </div>
 
-        {/* Images */}
         <div className="rounded-2xl border bg-white p-4 shadow-sm md:p-6">
           <div className="text-sm font-extrabold" style={{ color: DARK_BLUE }}>
             Images
@@ -298,7 +446,6 @@ export default function AdminProductForm() {
           </p>
 
           <div className="mt-4 flex flex-col gap-3">
-            {/* Upload */}
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50">
               <ImagePlus size={16} />
               Upload images
@@ -311,7 +458,6 @@ export default function AdminProductForm() {
               />
             </label>
 
-            {/* Camera capture */}
             <label
               className="flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white"
               style={{ backgroundColor: DARK_BLUE }}
@@ -328,14 +474,24 @@ export default function AdminProductForm() {
             </label>
           </div>
 
-          {/* Gallery */}
           <div className="mt-4 grid grid-cols-3 gap-2">
-            {images.map((url) => (
-              <div key={url} className="relative overflow-hidden rounded-xl border">
-                <img src={url} alt="product" className="h-24 w-full object-cover" />
+            {gallery.map((item, i) => (
+              <div key={`${item.type}-${item.url}-${i}`} className="relative overflow-hidden rounded-xl border">
+                <img
+                  src={item.url}
+                  alt="product"
+                  className="h-24 w-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.opacity = "0.35";
+                  }}
+                />
                 <button
                   type="button"
-                  onClick={() => removeImage(url)}
+                  onClick={() =>
+                    item.type === "existing"
+                      ? removeExistingImage(item.url)
+                      : removePendingImage(item.url, item.index)
+                  }
                   className="absolute right-1 top-1 rounded-lg bg-white/90 px-2 py-1 text-xs font-bold text-slate-900"
                   title="Remove"
                 >
@@ -345,7 +501,7 @@ export default function AdminProductForm() {
             ))}
           </div>
 
-          {images.length === 0 && (
+          {gallery.length === 0 && (
             <div className="mt-4 rounded-xl border border-dashed p-4 text-center text-xs text-slate-500">
               No images yet.
             </div>
