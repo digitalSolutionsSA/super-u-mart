@@ -6,6 +6,43 @@ import { useStore } from "../context/StoreContext";
 const DARK_BLUE = "#111d5e";
 const ACCENT_ORANGE = "#f97316";
 
+/**
+ * ✅ ONLY categories allowed (exactly what you asked for).
+ * These ids are what will be stored in product.category.
+ */
+const PERMANENT_CATEGORIES = [
+  { id: "kitchen-appliances", name: "Kitchen Appliances" },
+  { id: "tools", name: "Tools" },
+  { id: "electronics-gaming", name: "Electronics & Gaming" },
+  { id: "toys", name: "Toys" },
+  { id: "sports-outdoor", name: "Sports & Outdoor" },
+  { id: "car-accessories", name: "Car Accessories" },
+  { id: "lights-solar", name: "Lights & Solar" },
+] as const;
+
+type CategoryId = (typeof PERMANENT_CATEGORIES)[number]["id"];
+
+/**
+ * If older products stored names like "Tools" instead of "tools",
+ * normalize them so edit mode selects the right option.
+ */
+function normalizeCategoryId(raw?: string): CategoryId | "" {
+  const v = String(raw ?? "").trim();
+  if (!v) return "";
+
+  // direct match
+  const direct = PERMANENT_CATEGORIES.find((c) => c.id === v);
+  if (direct) return direct.id;
+
+  // match by display name (case-insensitive)
+  const lower = v.toLowerCase();
+  const byName = PERMANENT_CATEGORIES.find((c) => c.name.toLowerCase() === lower);
+  if (byName) return byName.id;
+
+  // no match
+  return "";
+}
+
 export default function AdminProductForm() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -20,7 +57,9 @@ export default function AdminProductForm() {
   const [name, setName] = useState(existing?.name ?? "");
   const [price, setPrice] = useState<number>(existing?.price ?? 0);
   const [description, setDescription] = useState(existing?.description ?? "");
-  const [category, setCategory] = useState(existing?.category ?? "");
+
+  // ✅ normalize for edit mode
+  const [category, setCategory] = useState<string>(normalizeCategoryId(existing?.category));
 
   const [onSale, setOnSale] = useState<boolean>(!!existing?.onSale);
   const [salePrice, setSalePrice] = useState<number | "">(existing?.salePrice ?? "");
@@ -56,13 +95,19 @@ export default function AdminProductForm() {
       alert("Price must be a positive number.");
       return;
     }
+    if (!category) {
+      alert("Please select a category.");
+      return;
+    }
 
     const payload: any = {
       id: existing?.id ?? crypto.randomUUID(),
       name: name.trim(),
       price: Number(price),
       description: description.trim(),
-      category: category.trim() || undefined,
+
+      // ✅ store ONLY allowed category ids
+      category: String(category),
 
       onSale,
       salePrice: onSale && salePrice !== "" ? Number(salePrice) : undefined,
@@ -85,10 +130,11 @@ export default function AdminProductForm() {
     <form onSubmit={onSave}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">
+          {/* ✅ white heading */}
+          <h1 className="text-2xl font-extrabold text-white">
             {existing ? "Edit Product" : "Add Product"}
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-1 text-sm text-white/80">
             Upload images or take a photo, add dimensions, pricing, and sale settings.
           </p>
         </div>
@@ -128,12 +174,20 @@ export default function AdminProductForm() {
             </Field>
 
             <Field label="Category">
-              <input
+              <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full rounded-xl border px-3 py-2 text-sm"
-                placeholder="e.g. cleaning-supplies"
-              />
+              >
+                <option value="" disabled>
+                  Select a category...
+                </option>
+                {PERMANENT_CATEGORIES.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </Field>
 
             <Field label="Price (R)">
@@ -194,7 +248,9 @@ export default function AdminProductForm() {
                 <input
                   type="number"
                   value={lengthCm}
-                  onChange={(e) => setLengthCm(e.target.value === "" ? "" : Number(e.target.value))}
+                  onChange={(e) =>
+                    setLengthCm(e.target.value === "" ? "" : Number(e.target.value))
+                  }
                   className="w-full rounded-xl border px-3 py-2 text-sm"
                 />
               </Field>
@@ -202,7 +258,9 @@ export default function AdminProductForm() {
                 <input
                   type="number"
                   value={widthCm}
-                  onChange={(e) => setWidthCm(e.target.value === "" ? "" : Number(e.target.value))}
+                  onChange={(e) =>
+                    setWidthCm(e.target.value === "" ? "" : Number(e.target.value))
+                  }
                   className="w-full rounded-xl border px-3 py-2 text-sm"
                 />
               </Field>
@@ -210,7 +268,9 @@ export default function AdminProductForm() {
                 <input
                   type="number"
                   value={heightCm}
-                  onChange={(e) => setHeightCm(e.target.value === "" ? "" : Number(e.target.value))}
+                  onChange={(e) =>
+                    setHeightCm(e.target.value === "" ? "" : Number(e.target.value))
+                  }
                   className="w-full rounded-xl border px-3 py-2 text-sm"
                 />
               </Field>
@@ -218,7 +278,9 @@ export default function AdminProductForm() {
                 <input
                   type="number"
                   value={weightKg}
-                  onChange={(e) => setWeightKg(e.target.value === "" ? "" : Number(e.target.value))}
+                  onChange={(e) =>
+                    setWeightKg(e.target.value === "" ? "" : Number(e.target.value))
+                  }
                   className="w-full rounded-xl border px-3 py-2 text-sm"
                 />
               </Field>
@@ -237,9 +299,7 @@ export default function AdminProductForm() {
 
           <div className="mt-4 flex flex-col gap-3">
             {/* Upload */}
-            <label
-              className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-            >
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50">
               <ImagePlus size={16} />
               Upload images
               <input

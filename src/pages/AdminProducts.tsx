@@ -1,13 +1,21 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Pencil, Trash2, Search as SearchIcon, ChevronDown, ChevronUp, Tag } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Search as SearchIcon,
+  ChevronDown,
+  ChevronUp,
+  Tag,
+} from "lucide-react";
 import { useStore } from "../context/StoreContext";
 
 type Product = {
   id: string | number;
   name: string;
   description?: string;
-  category?: string;
+  category?: string; // we will treat this as a category "id"/slug ideally
   price?: number; // assuming ZAR
   onSale?: boolean;
   featured?: boolean;
@@ -15,23 +23,48 @@ type Product = {
 
 const ACCENT_ORANGE = "#f97316";
 
+/**
+ * ✅ Permanent categories (always show in sidebar and grouping),
+ * even when there are zero products.
+ *
+ * IMPORTANT: These ids are what we filter by.
+ * Ideally your product.category should store one of these ids.
+ */
+const PERMANENT_CATEGORIES = [
+  { id: "kitchen-appliances", name: "Kitchen Appliances" },
+  { id: "tools", name: "Tools" },
+  { id: "electronics-gaming", name: "Electronics & Gaming" },
+  { id: "toys", name: "Toys" },
+  { id: "sports-outdoor", name: "Sports & Outdoor" },
+  { id: "car-accessories", name: "Car Accessories" },
+  { id: "lights-solar", name: "Lights & Solar" },
+] as const;
+
+type CategoryId = (typeof PERMANENT_CATEGORIES)[number]["id"];
+
 function moneyZAR(val: number) {
   const n = Number.isFinite(val) ? val : 0;
-  return (
-    new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR" })
-      .format(n)
-      .replace("ZAR", "R")
-      .replace("R ", "R")
-  );
+  return new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR" })
+    .format(n)
+    .replace("ZAR", "R")
+    .replace("R ", "R");
 }
 
-function TogglePill({ on, onClick }: { on: boolean; onClick: () => void }) {
-  // Keep background consistent so nothing “flashes” or looks like it changes the page
+function TogglePill({
+  on,
+  onClick,
+  disabled,
+}: {
+  on: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="px-4 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wide transition hover:brightness-110"
+      disabled={disabled}
+      className="px-4 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wide transition hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed"
       style={{
         background: "rgba(255,255,255,0.10)",
         border: "1px solid rgba(255,255,255,0.18)",
@@ -44,20 +77,76 @@ function TogglePill({ on, onClick }: { on: boolean; onClick: () => void }) {
   );
 }
 
+/**
+ * Normalize any incoming product category to one of our permanent ids when possible.
+ * This keeps filtering/grouping sane even if older products stored display names.
+ */
+function normalizeCategoryId(raw?: string): CategoryId | "Uncategorized" {
+  const v = String(raw ?? "").trim();
+  if (!v) return "Uncategorized";
+
+  // direct match on id
+  const direct = PERMANENT_CATEGORIES.find((c) => c.id === v);
+  if (direct) return direct.id;
+
+  // match on display name (case-insensitive)
+  const lower = v.toLowerCase();
+  const byName = PERMANENT_CATEGORIES.find((c) => c.name.toLowerCase() === lower);
+  if (byName) return byName.id;
+
+  // loose matching for common variants
+  const simplified = lower.replace(/&/g, "and").replace(/\s+/g, " ").trim();
+  const byLoose = PERMANENT_CATEGORIES.find(
+    (c) =>
+      c.name
+        .toLowerCase()
+        .replace(/&/g, "and")
+        .replace(/\s+/g, " ")
+        .trim() === simplified
+  );
+  if (byLoose) return byLoose.id;
+
+  return "Uncategorized";
+}
+
+function categoryLabel(id: CategoryId | "Uncategorized"): string {
+  if (id === "Uncategorized") return "Uncategorized";
+  return PERMANENT_CATEGORIES.find((c) => c.id === id)?.name ?? "Uncategorized";
+}
+
 export default function AdminProducts() {
   const navigate = useNavigate();
-  const { products } = useStore() as { products: Product[] };
+
+  // ✅ Pull real actions from StoreContext (Supabase-wired)
+  const {
+    products,
+    updateProduct,
+    deleteProduct,
+    loadingProducts,
+  } = useStore() as unknown as {
+    products: Product[];
+    updateProduct: (id: string, p: Partial<Product>) => Promise<void>;
+    deleteProduct: (id: string) => Promise<void>;
+    loadingProducts?: boolean;
+  };
 
   const [query, setQuery] = useState("");
   const [onSaleOnly, setOnSaleOnly] = useState(false);
   const [featuredOnly, setFeaturedOnly] = useState(false);
 
-  // Categories from products
+  // ✅ UI feedback so you actually see when Supabase rejects something
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  /**
+   * ✅ Sidebar categories must always show:
+   * we use the permanent category list (plus optional Uncategorized).
+   */
   const categories = useMemo(() => {
-    const set = new Set<string>();
-    (products || []).forEach((p) => set.add((p.category || "Uncategorized").trim()));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [products]);
+    return [...PERMANENT_CATEGORIES.map((c) => c.id), "Uncategorized"] as Array<
+      CategoryId | "Uncategorized"
+    >;
+  }, []);
 
   // Category toggles (default ON)
   const [categoryOn, setCategoryOn] = useState<Record<string, boolean>>({});
@@ -66,26 +155,29 @@ export default function AdminProducts() {
     setCategoryOn((prev) => {
       const next: Record<string, boolean> = { ...prev };
       categories.forEach((c) => {
-        if (next[c] === undefined) next[c] = true;
+        const key = String(c);
+        if (next[key] === undefined) next[key] = true;
       });
+      // keep only known categories
       Object.keys(next).forEach((k) => {
-        if (!categories.includes(k)) delete next[k];
+        if (!categories.map(String).includes(k)) delete next[k];
       });
       return next;
     });
   }, [categories]);
 
-  // Collapsing categories
+  // Collapsing categories (for main grouped view)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setCollapsed((prev) => {
       const next = { ...prev };
       categories.forEach((c) => {
-        if (next[c] === undefined) next[c] = false;
+        const key = String(c);
+        if (next[key] === undefined) next[key] = false;
       });
       Object.keys(next).forEach((k) => {
-        if (!categories.includes(k)) delete next[k];
+        if (!categories.map(String).includes(k)) delete next[k];
       });
       return next;
     });
@@ -113,10 +205,10 @@ export default function AdminProducts() {
   const filtered = useMemo(() => {
     let list = [...(products || [])];
 
-    // category filter
+    // category filter (using normalized category id)
     list = list.filter((p) => {
-      const cat = (p.category || "Uncategorized").trim();
-      return categoryOn[cat] !== false;
+      const catId = normalizeCategoryId(p.category);
+      return categoryOn[String(catId)] !== false;
     });
 
     // search
@@ -125,8 +217,9 @@ export default function AdminProducts() {
       list = list.filter((p) => {
         const name = (p.name || "").toLowerCase();
         const desc = (p.description || "").toLowerCase();
-        const cat = ((p.category || "Uncategorized") + "").toLowerCase();
-        return name.includes(q) || desc.includes(q) || cat.includes(q);
+        const catLabel = categoryLabel(normalizeCategoryId(p.category)).toLowerCase();
+        const catRaw = String(p.category ?? "").toLowerCase();
+        return name.includes(q) || desc.includes(q) || catLabel.includes(q) || catRaw.includes(q);
       });
     }
 
@@ -141,10 +234,12 @@ export default function AdminProducts() {
 
   const grouped = useMemo(() => {
     const map = new Map<string, Product[]>();
+
     filtered.forEach((p) => {
-      const cat = (p.category || "Uncategorized").trim();
-      if (!map.has(cat)) map.set(cat, []);
-      map.get(cat)!.push(p);
+      const catId = normalizeCategoryId(p.category);
+      const groupKey = String(catId);
+      if (!map.has(groupKey)) map.set(groupKey, []);
+      map.get(groupKey)!.push(p);
     });
 
     for (const [k, arr] of map.entries()) {
@@ -152,17 +247,27 @@ export default function AdminProducts() {
       map.set(k, arr);
     }
 
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    // Sort by the permanent category order, and place Uncategorized last.
+    const order = new Map<string, number>();
+    PERMANENT_CATEGORIES.forEach((c, idx) => order.set(c.id, idx));
+    order.set("Uncategorized", 999);
+
+    return Array.from(map.entries()).sort((a, b) => {
+      const oa = order.get(a[0]) ?? 998;
+      const ob = order.get(b[0]) ?? 998;
+      if (oa !== ob) return oa - ob;
+      return a[0].localeCompare(b[0]);
+    });
   }, [filtered]);
 
   const setAllCategories = (on: boolean) => {
     const next: Record<string, boolean> = {};
-    categories.forEach((c) => (next[c] = on));
+    categories.forEach((c) => (next[String(c)] = on));
     setCategoryOn(next);
   };
 
-  const toggleCategory = (cat: string) => {
-    setCategoryOn((prev) => ({ ...prev, [cat]: !(prev[cat] !== false) }));
+  const toggleCategory = (catId: string) => {
+    setCategoryOn((prev) => ({ ...prev, [catId]: !(prev[catId] !== false) }));
   };
 
   const clearFilters = () => {
@@ -172,10 +277,52 @@ export default function AdminProducts() {
     setAllCategories(true);
   };
 
-  // Placeholder actions until Supabase is wired
+  // ✅ Real actions
   const onAddProduct = () => navigate("/admin/products/new");
   const onEdit = (id: Product["id"]) => navigate(`/admin/products/${id}`);
-  const onDelete = (id: Product["id"]) => alert(`Delete product ${id} (wire later)`);
+
+  const onDelete = async (id: Product["id"]) => {
+    setActionError(null);
+    const sure = window.confirm("Delete this product permanently?");
+    if (!sure) return;
+
+    try {
+      setBusyId(String(id));
+      await deleteProduct(String(id));
+    } catch (e: any) {
+      console.error(e);
+      setActionError(e?.message || "Failed to delete product (Supabase said no).");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // ✅ Quick toggles that actually SAVE to Supabase (helps you confirm saving works)
+  const toggleProductOnSale = async (p: Product) => {
+    setActionError(null);
+    try {
+      setBusyId(String(p.id));
+      await updateProduct(String(p.id), { onSale: !p.onSale });
+    } catch (e: any) {
+      console.error(e);
+      setActionError(e?.message || "Failed to update On Sale.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const toggleProductFeatured = async (p: Product) => {
+    setActionError(null);
+    try {
+      setBusyId(String(p.id));
+      await updateProduct(String(p.id), { featured: !p.featured });
+    } catch (e: any) {
+      console.error(e);
+      setActionError(e?.message || "Failed to update Featured.");
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   return (
     <div className="w-full">
@@ -210,13 +357,19 @@ export default function AdminProducts() {
           <div className="mt-3 flex items-center gap-2">
             <span
               className="px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide text-white"
-              style={{ background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.14)" }}
+              style={{
+                background: "rgba(255,255,255,0.10)",
+                border: "1px solid rgba(255,255,255,0.14)",
+              }}
             >
               {shownCount} SHOWN
             </span>
             <span
               className="px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide text-white"
-              style={{ background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.14)" }}
+              style={{
+                background: "rgba(255,255,255,0.10)",
+                border: "1px solid rgba(255,255,255,0.14)",
+              }}
             >
               {totalCount} TOTAL
             </span>
@@ -262,25 +415,38 @@ export default function AdminProducts() {
           <div className="mt-7 flex items-center justify-between">
             <div className="text-white font-extrabold text-lg">Categories</div>
             <div className="text-white/80 text-sm font-extrabold">
-              <button onClick={() => setAllCategories(true)} className="hover:text-white transition">
+              <button
+                type="button"
+                onClick={() => setAllCategories(true)}
+                className="hover:text-white transition"
+              >
                 All
               </button>
               <span className="mx-2 text-white/35">|</span>
-              <button onClick={() => setAllCategories(false)} className="hover:text-white transition">
+              <button
+                type="button"
+                onClick={() => setAllCategories(false)}
+                className="hover:text-white transition"
+              >
                 None
               </button>
             </div>
           </div>
 
           <div className="mt-3 space-y-2">
-            {categories.map((cat) => {
-              const isOn = categoryOn[cat] !== false;
-              const countInCat = (products || []).filter((p) => (p.category || "Uncategorized").trim() === cat).length;
+            {categories.map((catId) => {
+              const key = String(catId);
+              const isOn = categoryOn[key] !== false;
+
+              const countInCat = (products || []).filter(
+                (p) => String(normalizeCategoryId(p.category)) === key
+              ).length;
 
               return (
                 <button
-                  key={cat}
-                  onClick={() => toggleCategory(cat)}
+                  key={key}
+                  type="button"
+                  onClick={() => toggleCategory(key)}
                   className="w-full text-left rounded-2xl px-4 py-3 transition hover:brightness-110"
                   style={{
                     background: "rgba(255,255,255,0.08)",
@@ -289,7 +455,7 @@ export default function AdminProducts() {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-white font-extrabold">{cat}</div>
+                      <div className="text-white font-extrabold">{categoryLabel(catId)}</div>
                       <div className="text-white/60 text-sm">{countInCat} items</div>
                     </div>
 
@@ -346,34 +512,52 @@ export default function AdminProducts() {
             </button>
           </div>
 
+          {/* ✅ errors + loading */}
+          {actionError && (
+            <div
+              className="mt-4 rounded-xl px-4 py-3 text-sm font-bold"
+              style={{
+                background: "rgba(255,0,0,0.10)",
+                border: "1px solid rgba(255,0,0,0.20)",
+                color: "#fecaca",
+              }}
+            >
+              {actionError}
+            </div>
+          )}
+
+          {loadingProducts && (
+            <div className="mt-6 text-white/70 text-sm">Loading products…</div>
+          )}
+
           {/* Groups */}
           <div className="mt-5 space-y-6">
-            {grouped.length === 0 ? (
-  <section
-    className="rounded-2xl overflow-hidden"
-    style={{
-      background: "rgba(255,255,255,0.92)",
-      border: "1px solid rgba(255,255,255,0.15)",
-      boxShadow: "0 18px 50px rgba(0,0,0,0.22)",
-    }}
-  >
-    <div className="px-6 py-5">
-      <div className="font-extrabold text-lg text-[#0f1b55]">
-        No products match your filters.
-      </div>
-      <div className="text-[#334155] text-sm mt-1">
-        Try adjusting your search or filter settings.
-      </div>
-    </div>
-  </section>
+            {!loadingProducts && grouped.length === 0 ? (
+              <section
+                className="rounded-2xl overflow-hidden"
+                style={{
+                  background: "rgba(255,255,255,0.92)",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  boxShadow: "0 18px 50px rgba(0,0,0,0.22)",
+                }}
+              >
+                <div className="px-6 py-5">
+                  <div className="font-extrabold text-lg text-[#0f1b55]">
+                    No products match your filters.
+                  </div>
+                  <div className="text-[#334155] text-sm mt-1">
+                    Try adjusting your search or filter settings.
+                  </div>
+                </div>
+              </section>
             ) : (
-              grouped.map(([cat, items]) => {
-                const isCollapsed = !!collapsed[cat];
+              grouped.map(([catId, items]) => {
+                const isCollapsed = !!collapsed[catId];
                 const saleCount = items.filter((p) => !!p.onSale).length;
 
                 return (
                   <section
-                    key={cat}
+                    key={catId}
                     className="rounded-2xl overflow-hidden"
                     style={{
                       background: "rgba(255,255,255,0.92)",
@@ -391,7 +575,9 @@ export default function AdminProducts() {
                       }}
                     >
                       <div>
-                        <div className="font-extrabold text-lg text-[#0f1b55]">{cat}</div>
+                        <div className="font-extrabold text-lg text-[#0f1b55]">
+                          {categoryLabel(catId as any)}
+                        </div>
                         <div className="text-[#334155] text-sm">
                           {items.length} product{items.length === 1 ? "" : "s"}
                         </div>
@@ -411,7 +597,7 @@ export default function AdminProducts() {
                         </span>
 
                         <button
-                          onClick={() => setCollapsed((p) => ({ ...p, [cat]: !p[cat] }))}
+                          onClick={() => setCollapsed((p) => ({ ...p, [catId]: !p[catId] }))}
                           className="p-2 rounded-xl transition hover:brightness-110"
                           style={{
                             background: "rgba(17,29,94,0.06)",
@@ -432,12 +618,15 @@ export default function AdminProducts() {
                       <div className="p-6">
                         {/* Table header */}
                         <div
-                          className="grid grid-cols-[1fr_140px_120px_170px] gap-4 pb-3 text-xs font-extrabold uppercase tracking-wide"
-                          style={{ color: "#41506b", borderBottom: "1px solid rgba(17,29,94,0.10)" }}
+                          className="grid grid-cols-[1fr_140px_220px_170px] gap-4 pb-3 text-xs font-extrabold uppercase tracking-wide"
+                          style={{
+                            color: "#41506b",
+                            borderBottom: "1px solid rgba(17,29,94,0.10)",
+                          }}
                         >
                           <div>Product</div>
                           <div>Price</div>
-                          <div>On Sale</div>
+                          <div>Quick Toggles</div>
                           <div className="text-right">Actions</div>
                         </div>
 
@@ -445,18 +634,22 @@ export default function AdminProducts() {
                         <div className="mt-3 space-y-3">
                           {items.map((p) => {
                             const price = typeof p.price === "number" ? p.price : 0;
+                            const rowBusy = busyId === String(p.id);
 
                             return (
                               <div
                                 key={p.id}
-                                className="grid grid-cols-[1fr_140px_120px_170px] gap-4 items-start rounded-2xl px-4 py-3"
+                                className="grid grid-cols-[1fr_140px_220px_170px] gap-4 items-start rounded-2xl px-4 py-3"
                                 style={{
                                   background: "rgba(17,29,94,0.06)",
                                   border: "1px solid rgba(17,29,94,0.08)",
                                 }}
                               >
                                 <div className="min-w-0">
-                                  <div className="font-extrabold truncate" style={{ color: "#0f1b55" }}>
+                                  <div
+                                    className="font-extrabold truncate"
+                                    style={{ color: "#0f1b55" }}
+                                  >
                                     {p.name}
                                   </div>
                                   <div className="text-sm truncate" style={{ color: "#475569" }}>
@@ -468,30 +661,45 @@ export default function AdminProducts() {
                                   {moneyZAR(price)}
                                 </div>
 
-                                <div className="pt-0.5">
-                                  <span
-                                    className="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-extrabold"
+                                {/* ✅ Quick toggles that SAVE */}
+                                <div className="pt-0.5 flex items-center gap-2 flex-wrap">
+                                  <button
+                                    type="button"
+                                    disabled={rowBusy}
+                                    onClick={() => toggleProductOnSale(p)}
+                                    className="px-3 py-1 rounded-full text-xs font-extrabold transition disabled:opacity-60"
                                     style={{
-                                      background: p.onSale ? "rgba(249,115,22,0.18)" : "rgba(17,29,94,0.10)",
+                                      background: p.onSale
+                                        ? "rgba(249,115,22,0.18)"
+                                        : "rgba(17,29,94,0.10)",
                                       border: "1px solid rgba(17,29,94,0.12)",
                                       color: "#0f1b55",
-                                      minWidth: 46,
                                     }}
+                                    title="Toggle On Sale"
                                   >
-                                    {p.onSale ? "Yes" : "No"}
-                                  </span>
+                                    {p.onSale ? "On Sale: Yes" : "On Sale: No"}
+                                  </button>
 
-                                  {p.featured && (
-                                    <span
-                                      className="ml-2 inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-extrabold"
-                                      style={{
-                                        background: "rgba(34,197,94,0.16)",
-                                        border: "1px solid rgba(34,197,94,0.22)",
-                                        color: "#0f1b55",
-                                      }}
-                                      title="Featured on website"
-                                    >
-                                      Featured
+                                  <button
+                                    type="button"
+                                    disabled={rowBusy}
+                                    onClick={() => toggleProductFeatured(p)}
+                                    className="px-3 py-1 rounded-full text-xs font-extrabold transition disabled:opacity-60"
+                                    style={{
+                                      background: p.featured
+                                        ? "rgba(34,197,94,0.16)"
+                                        : "rgba(17,29,94,0.10)",
+                                      border: "1px solid rgba(17,29,94,0.12)",
+                                      color: "#0f1b55",
+                                    }}
+                                    title="Toggle Featured"
+                                  >
+                                    {p.featured ? "Featured: Yes" : "Featured: No"}
+                                  </button>
+
+                                  {rowBusy && (
+                                    <span className="text-xs font-bold" style={{ color: "#64748b" }}>
+                                      Saving…
                                     </span>
                                   )}
                                 </div>
@@ -512,7 +720,8 @@ export default function AdminProducts() {
 
                                   <button
                                     onClick={() => onDelete(p.id)}
-                                    className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-extrabold transition hover:brightness-110"
+                                    disabled={rowBusy}
+                                    className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-extrabold transition hover:brightness-110 disabled:opacity-60"
                                     style={{
                                       background: "rgba(255,0,0,0.08)",
                                       border: "1px solid rgba(255,0,0,0.20)",
@@ -536,7 +745,8 @@ export default function AdminProducts() {
           </div>
 
           <div className="mt-6 text-white/55 text-sm">
-            Uses <code className="text-white/80">product.onSale</code> and <code className="text-white/80">product.featured</code>.
+            Uses <code className="text-white/80">product.onSale</code> and{" "}
+            <code className="text-white/80">product.featured</code>.
           </div>
         </main>
       </div>

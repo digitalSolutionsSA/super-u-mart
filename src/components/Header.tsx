@@ -27,12 +27,12 @@ export default function Header({ onSearch }: HeaderProps) {
 
   const adminHref = useMemo(() => (adminUser ? '/admin' : '/admin/login'), [adminUser]);
 
+  // ✅ Removed Categories from the nav
   const navLinks = useMemo(
     () => [
       { path: '/', label: 'Home' },
       { path: '/shop', label: 'Shop' },
       { path: '/deals', label: 'Deals' },
-      { path: '/categories', label: 'Categories' },
       { path: '/about', label: 'About' },
       { path: '/contact', label: 'Contact' },
       // NOTE: removed /admin from this bottom nav to avoid duplication + confusion
