@@ -35,6 +35,7 @@ export default function ShopPage() {
       "Car Accessories",
       "Lights & Solar",
       "Computers & Peripherals",
+      "Cellphones & Tablets",
     ],
     []
   );

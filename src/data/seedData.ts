@@ -49,6 +49,12 @@ export const defaultCategories: Category[] = [
     icon: "✏️",
     description: "Pens, paper, office essentials",
   },
+  {
+    id: "cellphones-tablets",
+    name: "Cellphones & Tablets",
+    icon: "📱",
+    description: "Mobile devices",
+  },
 ];
 
 /**

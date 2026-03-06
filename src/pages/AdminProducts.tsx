@@ -32,6 +32,7 @@ const PERMANENT_CATEGORIES = [
   { id: "sports-outdoor", name: "Sports & Outdoor" },
   { id: "car-accessories", name: "Car Accessories" },
   { id: "lights-solar", name: "Lights & Solar" },
+  { id: "cellphones-tablets", name: "Cellphones & Tablets" },
 ] as const;
 
 type CategoryId = (typeof PERMANENT_CATEGORIES)[number]["id"];
