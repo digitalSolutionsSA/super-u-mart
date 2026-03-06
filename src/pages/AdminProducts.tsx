@@ -17,6 +17,7 @@ type Product = {
   description?: string;
   category?: string;
   price?: number;
+  stock?: number;
   onSale?: boolean;
   featured?: boolean;
 };
@@ -27,7 +28,7 @@ const PERMANENT_CATEGORIES = [
   { id: "kitchen-appliances", name: "Kitchen Appliances" },
   { id: "tools", name: "Tools" },
   { id: "electronics-gaming", name: "Electronics & Gaming" },
-  { id: "toys", name: "Toys" },
+  { id: "toys", name: "Baby Kids & Toys" },
   { id: "sports-outdoor", name: "Sports & Outdoor" },
   { id: "car-accessories", name: "Car Accessories" },
   { id: "lights-solar", name: "Lights & Solar" },
@@ -250,7 +251,6 @@ export default function AdminProducts() {
 
   const onAddProduct = () => navigate("/admin/products/new");
 
-  // FIXED: send edit to a dedicated edit route instead of /admin/products/:id
   const onEdit = (id: Product["id"]) => {
     navigate(`/admin/products/edit/${id}`);
   };
@@ -582,7 +582,7 @@ export default function AdminProducts() {
                     {!isCollapsed && (
                       <div className="p-6">
                         <div
-                          className="grid grid-cols-[1fr_140px_220px_170px] gap-4 pb-3 text-xs font-extrabold uppercase tracking-wide"
+                          className="grid grid-cols-[1fr_140px_110px_220px_170px] gap-4 pb-3 text-xs font-extrabold uppercase tracking-wide"
                           style={{
                             color: "#41506b",
                             borderBottom: "1px solid rgba(17,29,94,0.10)",
@@ -590,6 +590,7 @@ export default function AdminProducts() {
                         >
                           <div>Product</div>
                           <div>Price</div>
+                          <div>Stock</div>
                           <div>Quick Toggles</div>
                           <div className="text-right">Actions</div>
                         </div>
@@ -597,12 +598,13 @@ export default function AdminProducts() {
                         <div className="mt-3 space-y-3">
                           {items.map((p) => {
                             const price = typeof p.price === "number" ? p.price : 0;
+                            const stock = typeof p.stock === "number" ? p.stock : 0;
                             const rowBusy = busyId === String(p.id);
 
                             return (
                               <div
                                 key={p.id}
-                                className="grid grid-cols-[1fr_140px_220px_170px] gap-4 items-start rounded-2xl px-4 py-3"
+                                className="grid grid-cols-[1fr_140px_110px_220px_170px] gap-4 items-start rounded-2xl px-4 py-3"
                                 style={{
                                   background: "rgba(17,29,94,0.06)",
                                   border: "1px solid rgba(17,29,94,0.08)",
@@ -622,6 +624,34 @@ export default function AdminProducts() {
 
                                 <div className="font-extrabold pt-0.5" style={{ color: "#0f1b55" }}>
                                   {moneyZAR(price)}
+                                </div>
+
+                                <div className="pt-0.5">
+                                  <span
+                                    className="inline-flex items-center rounded-full px-3 py-1 text-xs font-extrabold"
+                                    style={{
+                                      background:
+                                        stock <= 0
+                                          ? "rgba(239,68,68,0.14)"
+                                          : stock <= 5
+                                          ? "rgba(249,115,22,0.16)"
+                                          : "rgba(34,197,94,0.16)",
+                                      border:
+                                        stock <= 0
+                                          ? "1px solid rgba(239,68,68,0.24)"
+                                          : stock <= 5
+                                          ? "1px solid rgba(249,115,22,0.24)"
+                                          : "1px solid rgba(34,197,94,0.24)",
+                                      color:
+                                        stock <= 0
+                                          ? "#b91c1c"
+                                          : stock <= 5
+                                          ? "#c2410c"
+                                          : "#166534",
+                                    }}
+                                  >
+                                    {stock <= 0 ? "Out of stock" : `${stock} in stock`}
+                                  </span>
                                 </div>
 
                                 <div className="pt-0.5 flex items-center gap-2 flex-wrap">
@@ -707,8 +737,9 @@ export default function AdminProducts() {
           </div>
 
           <div className="mt-6 text-white/55 text-sm">
-            Uses <code className="text-white/80">product.onSale</code> and{" "}
-            <code className="text-white/80">product.featured</code>.
+            Uses <code className="text-white/80">product.onSale</code>,{" "}
+            <code className="text-white/80">product.featured</code> and{" "}
+            <code className="text-white/80">product.stock</code>.
           </div>
         </main>
       </div>

@@ -22,14 +22,21 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AdminUser | null>(null);
 
   useEffect(() => {
-    const raw = localStorage.getItem(LS_ADMIN_KEY);
+    // Clear any old persistent admin login from previous versions
+    localStorage.removeItem(LS_ADMIN_KEY);
+
+    const raw = sessionStorage.getItem(LS_ADMIN_KEY);
     if (!raw) return;
 
     try {
       const parsed = JSON.parse(raw) as AdminUser;
-      if (parsed?.email) setUser(parsed);
+      if (parsed?.email) {
+        setUser(parsed);
+      } else {
+        sessionStorage.removeItem(LS_ADMIN_KEY);
+      }
     } catch {
-      localStorage.removeItem(LS_ADMIN_KEY);
+      sessionStorage.removeItem(LS_ADMIN_KEY);
     }
   }, []);
 
@@ -43,13 +50,19 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
 
     const nextUser = { email: ADMIN_EMAIL };
     setUser(nextUser);
-    localStorage.setItem(LS_ADMIN_KEY, JSON.stringify(nextUser));
+
+    // Store only for the current browser session
+    sessionStorage.setItem(LS_ADMIN_KEY, JSON.stringify(nextUser));
+
+    // Clean up any old persistent login key just in case
+    localStorage.removeItem(LS_ADMIN_KEY);
 
     return { ok: true };
   };
 
   const logout = async () => {
     setUser(null);
+    sessionStorage.removeItem(LS_ADMIN_KEY);
     localStorage.removeItem(LS_ADMIN_KEY);
   };
 

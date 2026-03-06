@@ -91,9 +91,8 @@ export default function AboutPage() {
                 </h3>
 
                 <p style={{ color: "#555", lineHeight: 1.6 }}>
-                  To provide businesses with dependable access to essential
-                  products at wholesale prices, supported by consistent service
-                  and professional operations.
+                  To empower businesses and consumers by sourcing, distributing, and retailing high-quality products efficiently, 
+                  ensuring maximum value, exceptional service, and sustainable growth for our partners and customers
                 </p>
               </div>
 
@@ -117,9 +116,9 @@ export default function AboutPage() {
                 </h3>
 
                 <p style={{ color: "#555", lineHeight: 1.6 }}>
-                  To become a trusted wholesale partner known for efficiency,
-                  competitive pricing, and strong business relationships within
-                  our operating region.
+                  To be the most trusted retailer, where people love to work and shop. 
+                  We'll do this by putting our customers at the heart of everything we do and investing in our stores,
+                  our colleagues and our channels to offer the best possible shopping experience.
                 </p>
               </div>
             </div>

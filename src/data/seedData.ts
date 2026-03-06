@@ -45,7 +45,7 @@ export const defaultCategories: Category[] = [
   },
   {
     id: "stationary",
-    name: "Stationery",
+    name: "Computer & Peripherals",
     icon: "✏️",
     description: "Pens, paper, office essentials",
   },

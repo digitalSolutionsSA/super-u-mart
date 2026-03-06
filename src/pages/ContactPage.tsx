@@ -6,6 +6,33 @@ export default function ContactPage() {
   const DARK_BLUE = "#111d5e";
   const ACCENT_ORANGE = "#f97316";
 
+  const whatsappNumber = "27849888800";
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+
+    const companyName = String(formData.get("companyName") || "");
+    const contactPerson = String(formData.get("contactPerson") || "");
+    const email = String(formData.get("email") || "");
+    const message = String(formData.get("message") || "");
+
+    const whatsappMessage = encodeURIComponent(
+`Hello Super Ü Mart,
+
+Company Name: ${companyName || "N/A"}
+Contact Person: ${contactPerson}
+Email: ${email}
+
+Message:
+${message}`
+    );
+
+    window.open(`https://wa.me/${whatsappNumber}?text=${whatsappMessage}`, "_blank");
+  };
+
   return (
     <>
       <Header />
@@ -14,13 +41,13 @@ export default function ContactPage() {
         style={{
           minHeight: "90vh",
           position: "relative",
-          backgroundImage: "url('/categories/warehouse-bg.png')", // ✅ correct for /public
+          backgroundImage: "url('/categories/warehouse-bg.png')",
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundAttachment: "fixed",
         }}
       >
-        {/* Blue overlay (same tone as home) */}
+        {/* Blue overlay */}
         <div
           style={{
             position: "absolute",
@@ -55,11 +82,11 @@ export default function ContactPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
                 gap: 40,
               }}
             >
-              {/* Company Info */}
+              {/* Company Details */}
               <div
                 style={{
                   background: "white",
@@ -82,23 +109,41 @@ export default function ContactPage() {
                 <p>
                   <strong>Phone:</strong> 084 988 8800
                 </p>
+
                 <p>
                   <strong>Email:</strong> superumart.web@gmail.com
                 </p>
+
                 <p>
-                  <strong>Location:</strong> Vereeniging Industrial Area
+                  <strong>Location:</strong> 17a Telford Street, Duncanville, Vereeniging
                 </p>
+
                 <div style={{ lineHeight: 1.8 }}>
-                  <p><strong>Hours:</strong> </p>
-                  <p>Monday–Friday | 07:00 – 17:00</p>
-                  <p>Saturday | 08:00 – 14:00</p>
-                  <p>Sunday/ Public Holidays | 08:00 – 14:00</p>
+                  <p><strong>Hours:</strong></p>
+                  <p>Monday–Friday | 07:30 – 17:30</p>
+                  <p>Saturday | 07:30 – 15:00</p>
+                  <p>Sunday / Public Holidays | 07:30 – 14:00</p>
                 </div>
 
                 <p style={{ marginTop: 20, color: "#666" }}>
-                  We operate strictly as a wholesale supplier. Business registration details may be
-                  required.
+                  We are open to the public. Resellers are welcome to apply for a cash-on-delivery account for easier ordering.
                 </p>
+
+                {/* Google Maps */}
+                <div style={{ marginTop: 25 }}>
+                  <iframe
+                    title="Super U Mart Location"
+                    src="https://www.google.com/maps?q=14+Telford+St,+Duncanville,+Vereeniging,+1939&z=15&output=embed"
+                    width="100%"
+                    height="220"
+                    style={{
+                      border: 0,
+                      borderRadius: 10,
+                    }}
+                    loading="lazy"
+                    allowFullScreen
+                  />
+                </div>
               </div>
 
               {/* Contact Form */}
@@ -122,16 +167,39 @@ export default function ContactPage() {
                 </h3>
 
                 <form
+                  onSubmit={handleSubmit}
                   style={{
                     display: "flex",
                     flexDirection: "column",
                     gap: 15,
                   }}
                 >
-                  <input type="text" placeholder="Company Name" required style={inputStyle} />
-                  <input type="text" placeholder="Contact Person" required style={inputStyle} />
-                  <input type="email" placeholder="Email Address" required style={inputStyle} />
+                  {/* OPTIONAL */}
+                  <input
+                    name="companyName"
+                    type="text"
+                    placeholder="Company Name (optional)"
+                    style={inputStyle}
+                  />
+
+                  <input
+                    name="contactPerson"
+                    type="text"
+                    placeholder="Contact Person"
+                    required
+                    style={inputStyle}
+                  />
+
+                  <input
+                    name="email"
+                    type="email"
+                    placeholder="Email Address"
+                    required
+                    style={inputStyle}
+                  />
+
                   <textarea
+                    name="message"
                     placeholder="Your Message"
                     rows={5}
                     required

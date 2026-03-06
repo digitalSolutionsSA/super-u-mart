@@ -15,10 +15,10 @@ import ProductModal from "../components/ProductModal";
 import { supabase } from "../lib/supabase"; // <-- if this path is wrong, Vite will 500
 
 const PERMANENT_CATEGORIES = [
-  { id: "kitchen-appliances", name: "Kitchen Appliances", icon: "🍳" },
+  { id: "kitchen-appliances", name: "Kitchen and Home", icon: "🍳" },
   { id: "tools", name: "Tools", icon: "🛠️" },
   { id: "electronics-gaming", name: "Electronics & Gaming", icon: "🎮" },
-  { id: "toys", name: "Toys", icon: "🧸" },
+  { id: "toys", name: "Baby Kids & Toys", icon: "🧸" },
   { id: "sports-outdoor", name: "Sports & Outdoor", icon: "🏕️" },
   { id: "car-accessories", name: "Car Accessories", icon: "🚗" },
   { id: "lights-solar", name: "Lights & Solar", icon: "💡" },

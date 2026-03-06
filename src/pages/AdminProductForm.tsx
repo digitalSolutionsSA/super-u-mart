@@ -13,10 +13,10 @@ const STORAGE_BUCKET = "product-images";
  * These ids are what will be stored in product.category.
  */
 const PERMANENT_CATEGORIES = [
-  { id: "kitchen-appliances", name: "Kitchen Appliances" },
+  { id: "kitchen-appliances", name: "Kitchen and Home" },
   { id: "tools", name: "Tools" },
   { id: "electronics-gaming", name: "Electronics & Gaming" },
-  { id: "toys", name: "Toys" },
+  { id: "toys", name: "Baby Kids & Toys" },
   { id: "sports-outdoor", name: "Sports & Outdoor" },
   { id: "car-accessories", name: "Car Accessories" },
   { id: "lights-solar", name: "Lights & Solar" },

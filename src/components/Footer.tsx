@@ -24,8 +24,8 @@ export default function Footer() {
         {/* Quick links */}
         <div>
           <h4 style={{ color: 'white', fontFamily: 'Barlow, sans-serif', fontWeight: 700, marginBottom: 16, fontSize: 14, textTransform: 'uppercase', letterSpacing: 1 }}>Quick Links</h4>
-          {['/', '/shop', '/deals', '/categories', '/contact'].map((path, i) => {
-            const labels = ['Home', 'Shop', 'Deals', 'Categories', 'Contact'];
+          {['/', '/shop', '/deals', '/contact'].map((path, i) => {
+            const labels = ['Home', 'Shop', 'Deals', 'Contact'];
             return (
               <Link key={path} to={path} style={{ display: 'block', color: '#94a3b8', textDecoration: 'none', fontSize: 13, marginBottom: 8, transition: 'color 0.2s' }}
                 onMouseEnter={e => (e.target as HTMLElement).style.color = '#f97316'}
@@ -50,7 +50,7 @@ export default function Footer() {
         <div>
           <h4 style={{ color: 'white', fontFamily: 'Barlow, sans-serif', fontWeight: 700, marginBottom: 16, fontSize: 14, textTransform: 'uppercase', letterSpacing: 1 }}>For Resellers</h4>
           <p style={{ fontSize: 13, lineHeight: 1.7 }}>
-            Create a wholesale account to access bulk pricing, track orders, and get fast courier delivery to your door.
+            Create an account to keep track of previous orders, place orders faster, and manage your purchases in one place.
           </p>
           <Link to="/register" style={{
             display: 'inline-block',

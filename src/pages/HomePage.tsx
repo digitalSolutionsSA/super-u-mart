@@ -7,16 +7,15 @@ import { useStore } from '../context/StoreContext';
 import { Product } from '../types';
 
 const MARQUEE_CATEGORIES = [
-  { id: 'kitchen-appliances', name: 'Kitchen Appliances', image: '/categories/kitchen-appliances.png' },
+  { id: 'kitchen-appliances', name: 'Kitchen and Home', image: '/categories/kitchen-appliances.png' },
   { id: 'electronics-gaming', name: 'Electronics & Gaming', image: '/categories/electronics-gaming.png' },
   { id: 'tools-hardware', name: 'Tools & Hardware', image: '/categories/tools-hardware.png' },
-  { id: 'toys', name: 'Toys', image: '/categories/toys.png' },
+  { id: 'toys', name: 'Baby Kids & Toys', image: '/categories/toys.png' },
   { id: 'sports-outdoor', name: 'Sports & Outdoor', image: '/categories/sports-outdoor.png' },
   { id: 'car-accessories', name: 'Car Accessories', image: '/categories/car-accessories.png' },
   { id: 'lights-solar', name: 'Lights & Solar', image: '/categories/lights-solar.png' },
 ];
 
-/** Try to detect if something is "on sale" without knowing your exact schema */
 function isOnSale(p: any): boolean {
   if (!p) return false;
 
@@ -56,7 +55,6 @@ function isOnSale(p: any): boolean {
   return false;
 }
 
-/** Get an image URL from whatever you happen to store */
 function getProductImage(p: any): string | null {
   if (!p) return null;
 
@@ -77,7 +75,6 @@ function getProductImage(p: any): string | null {
   return null;
 }
 
-/** Pull sale + original prices in a best-effort way */
 function getPrices(p: any): { price: number; original?: number } {
   const basePrice = typeof p.price === 'number' ? p.price : 0;
 
@@ -115,6 +112,22 @@ function getPrices(p: any): { price: number; original?: number } {
   return { price: basePrice };
 }
 
+function getShortCategory(p: any): string {
+  return (
+    p?.categoryName ||
+    p?.category_label ||
+    p?.categoryLabel ||
+    p?.category ||
+    'Featured product'
+  );
+}
+
+function clampText(text: string, max = 120): string {
+  if (!text) return '';
+  if (text.length <= max) return text;
+  return `${text.slice(0, max).trim()}...`;
+}
+
 export default function HomePage() {
   const { products } = useStore();
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -127,19 +140,17 @@ export default function HomePage() {
   const [slideIndex, setSlideIndex] = useState(0);
   const [paused, setPaused] = useState(false);
 
-  // Keep index safe when product list changes
   useEffect(() => {
     if (slideIndex >= saleItems.length) setSlideIndex(0);
   }, [saleItems.length, slideIndex]);
 
-  // Auto-advance sale list
   useEffect(() => {
     if (paused) return;
     if (saleItems.length <= 1) return;
 
     const t = window.setInterval(() => {
       setSlideIndex((i) => (i + 1) % saleItems.length);
-    }, 4000);
+    }, 4500);
 
     return () => window.clearInterval(t);
   }, [paused, saleItems.length]);
@@ -154,9 +165,17 @@ export default function HomePage() {
     setSlideIndex((i) => (i + 1) % saleItems.length);
   };
 
-  // -----------------------------
-  // Marquee: REAL seamless loop (JS + modulo)
-  // -----------------------------
+  const heroProducts = useMemo(() => {
+    const items: any[] = [];
+    for (let k = 0; k < Math.min(3, saleItems.length); k++) {
+      items.push(saleItems[(slideIndex + k) % saleItems.length]);
+    }
+    return items;
+  }, [saleItems, slideIndex]);
+
+  const heroMain = heroProducts[0];
+  const heroSide = heroProducts.slice(1);
+
   const marqueeOuterRef = useRef<HTMLDivElement | null>(null);
   const marqueeTrackRef = useRef<HTMLDivElement | null>(null);
   const [marqueePaused, setMarqueePaused] = useState(false);
@@ -173,16 +192,13 @@ export default function HomePage() {
     const firstGroup = track.querySelector('.catMarqueeGroup') as HTMLElement | null;
     if (!firstGroup) return;
 
-    // distance to loop = full width of first group
     marqueeShiftPxRef.current = firstGroup.scrollWidth;
-    // keep x within bounds to avoid huge numbers over time
     if (marqueeShiftPxRef.current > 0) {
       marqueeXRef.current = marqueeXRef.current % marqueeShiftPxRef.current;
     }
   };
 
   useEffect(() => {
-    // Measure initially + after layout settles
     measureMarquee();
     const r1 = requestAnimationFrame(() => {
       measureMarquee();
@@ -192,7 +208,6 @@ export default function HomePage() {
     const onResize = () => measureMarquee();
     window.addEventListener('resize', onResize);
 
-    // Observe group size changes (image load, font, etc.)
     let ro: ResizeObserver | null = null;
     const track = marqueeTrackRef.current;
     const firstGroup = track?.querySelector('.catMarqueeGroup') as HTMLElement | null;
@@ -209,7 +224,7 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    const speedPxPerSec = 70; // adjust to taste
+    const speedPxPerSec = 70;
 
     const tick = (t: number) => {
       const track = marqueeTrackRef.current;
@@ -226,7 +241,6 @@ export default function HomePage() {
 
       if (!marqueePaused) {
         marqueeXRef.current += speedPxPerSec * dt;
-        // modulo wrap
         if (marqueeXRef.current >= loop) marqueeXRef.current = marqueeXRef.current % loop;
         track.style.transform = `translateX(${-marqueeXRef.current}px)`;
       }
@@ -244,16 +258,23 @@ export default function HomePage() {
   }, [marqueePaused]);
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#f8fafc', fontFamily: 'Barlow, sans-serif' }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#f8fafc',
+        fontFamily: 'Barlow, sans-serif',
+      }}
+    >
       <Header />
 
-      {/* Hero */}
       <section
         style={{
           background: 'linear-gradient(135deg, #1a2e7a 0%, #111d5e 60%, #1a2e7a 100%)',
           position: 'relative',
           overflow: 'hidden',
-          minHeight: 480,
+          minHeight: 560,
           display: 'flex',
           alignItems: 'center',
         }}
@@ -276,8 +297,8 @@ export default function HomePage() {
             padding: '60px 24px',
             width: '100%',
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 48,
+            gridTemplateColumns: '1fr 1.05fr',
+            gap: 40,
             alignItems: 'center',
             position: 'relative',
             zIndex: 1,
@@ -297,14 +318,33 @@ export default function HomePage() {
               }}
             >
               <span style={{ width: 8, height: 8, background: '#22c55e', borderRadius: '50%' }} />
-              <span style={{ color: '#86efac', fontSize: 13, fontWeight: 600 }}>Wholesale stock available now</span>
+              <span style={{ color: '#86efac', fontSize: 13, fontWeight: 600 }}>
+                Wholesale stock available now
+              </span>
             </div>
 
-            <h1 style={{ color: 'white', fontFamily: 'Barlow Condensed, Barlow, sans-serif', fontWeight: 900, fontSize: 52, lineHeight: 1.05, margin: '0 0 20px' }}>
+            <h1
+              style={{
+                color: 'white',
+                fontFamily: 'Barlow Condensed, Barlow, sans-serif',
+                fontWeight: 900,
+                fontSize: 52,
+                lineHeight: 1.05,
+                margin: '0 0 20px',
+              }}
+            >
               Simple wholesale ordering for everyday essentials.
             </h1>
 
-            <p style={{ color: '#cbd5e1', fontSize: 16, lineHeight: 1.7, margin: '0 0 32px' }}>
+            <p
+              style={{
+                color: '#cbd5e1',
+                fontSize: 16,
+                lineHeight: 1.7,
+                margin: '0 0 32px',
+                maxWidth: 560,
+              }}
+            >
               Browse categories, add to cart, choose courier, pay securely.
             </p>
 
@@ -341,22 +381,31 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Featured deals (mini list: 2–3 products) */}
           <div
             onMouseEnter={() => setPaused(true)}
             onMouseLeave={() => setPaused(false)}
             style={{
-              borderRadius: 18,
+              borderRadius: 24,
               padding: 18,
-              background: 'rgba(255,255,255,0.92)',
-              border: '1px solid rgba(226,232,240,0.9)',
+              background: 'rgba(255,255,255,0.93)',
+              border: '1px solid rgba(226,232,240,0.95)',
               boxShadow: '0 26px 70px rgba(0,0,0,0.42)',
               backdropFilter: 'blur(10px)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                marginBottom: 14,
+              }}
+            >
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                <h3 style={{ margin: 0, fontWeight: 900, color: '#0f172a', letterSpacing: -0.2 }}>On sale</h3>
+                <h3 style={{ margin: 0, fontWeight: 900, color: '#0f172a', letterSpacing: -0.2 }}>
+                  Featured deals
+                </h3>
                 <span style={{ fontSize: 12, color: '#64748b', fontWeight: 800 }}>
                   {saleItems.length > 0 ? `${slideIndex + 1} / ${saleItems.length}` : '0 / 0'}
                 </span>
@@ -368,8 +417,8 @@ export default function HomePage() {
                     onClick={goPrev}
                     aria-label="Previous"
                     style={{
-                      width: 34,
-                      height: 34,
+                      width: 36,
+                      height: 36,
                       borderRadius: 10,
                       border: '1px solid #e2e8f0',
                       background: 'white',
@@ -385,8 +434,8 @@ export default function HomePage() {
                     onClick={goNext}
                     aria-label="Next"
                     style={{
-                      width: 34,
-                      height: 34,
+                      width: 36,
+                      height: 36,
                       borderRadius: 10,
                       border: '1px solid #e2e8f0',
                       background: 'white',
@@ -402,136 +451,328 @@ export default function HomePage() {
               )}
             </div>
 
-            {saleItems.length > 0 ? (
+            {heroMain ? (
               <>
                 {(() => {
-                  const visibleCount = 3;
-                  const slice: any[] = [];
-                  for (let k = 0; k < Math.min(visibleCount, saleItems.length); k++) {
-                    slice.push(saleItems[(slideIndex + k) % saleItems.length]);
-                  }
+                  const img = getProductImage(heroMain);
+                  const { price, original } = getPrices(heroMain);
+                  const hasSave = typeof original === 'number' && original > price;
+                  const savePct = hasSave ? Math.round(((original - price) / original) * 100) : 0;
 
                   return (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
-                      {slice.map((p, idx) => {
-                        const img = getProductImage(p);
-                        const { price, original } = getPrices(p);
-                        const hasSave = typeof original === 'number' && original > price;
-                        const savePct = hasSave ? Math.round(((original! - price) / original!) * 100) : 0;
+                    <div
+                      onClick={() => setSelectedProduct(heroMain)}
+                      role="button"
+                      title="View product"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '170px 1fr',
+                        gap: 16,
+                        padding: 16,
+                        borderRadius: 20,
+                        border: '1px solid #e2e8f0',
+                        background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+                        cursor: 'pointer',
+                        boxShadow: '0 16px 32px rgba(15,23,42,0.08)',
+                        marginBottom: 14,
+                      }}
+                    >
+                      <div
+  style={{
+    width: '100%',
+    aspectRatio: '1 / 1',
+    borderRadius: 18,
+    overflow: 'hidden',
+    border: '1px solid #e2e8f0',
+    background: 'linear-gradient(135deg, #ffffff, #f8fafc)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+  }}
+>
+  {img ? (
+    <img
+      src={img}
+      alt={heroMain.name}
+      loading="lazy"
+      style={{
+        width: '100%',
+        height: '100%',
+        objectFit: 'contain',
+        display: 'block',
+      }}
+    />
+  ) : (
+    <span style={{ fontSize: 12, fontWeight: 900, color: '#64748b' }}>No image</span>
+  )}
+</div>
 
-                        return (
+                      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
+                        <div>
                           <div
-                            key={`${p.id ?? p.name}-${idx}`}
-                            onClick={() => setSelectedProduct(p)}
-                            role="button"
-                            title="View product"
                             style={{
-                              display: 'flex',
-                              gap: 12,
+                              display: 'inline-flex',
                               alignItems: 'center',
-                              padding: 12,
-                              borderRadius: 14,
-                              border: '1px solid #e2e8f0',
-                              background: 'white',
-                              cursor: 'pointer',
-                              boxShadow: '0 10px 18px rgba(15,23,42,0.06)',
+                              gap: 8,
+                              marginBottom: 10,
+                              flexWrap: 'wrap',
                             }}
                           >
-                            <div
+                            <span
                               style={{
-                                width: 56,
-                                height: 56,
-                                borderRadius: 12,
-                                border: '1px solid #e2e8f0',
-                                overflow: 'hidden',
-                                background: 'linear-gradient(135deg, #f8fafc, #eef2ff)',
-                                flex: '0 0 auto',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
+                                fontSize: 11,
+                                fontWeight: 900,
+                                color: '#1d4ed8',
+                                background: '#dbeafe',
+                                padding: '5px 9px',
+                                borderRadius: 999,
                               }}
                             >
-                              {img ? (
-                                <img
-                                  src={img}
-                                  alt={p.name}
-                                  loading="lazy"
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                                />
-                              ) : (
-                                <span style={{ fontSize: 11, fontWeight: 900, color: '#64748b' }}>No img</span>
-                              )}
-                            </div>
+                              {String(getShortCategory(heroMain))}
+                            </span>
 
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div
+                            {hasSave && (
+                              <span
                                 style={{
+                                  fontSize: 11,
                                   fontWeight: 900,
-                                  fontSize: 13,
-                                  color: '#0f172a',
-                                  lineHeight: 1.2,
-                                  marginBottom: 6,
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
+                                  color: '#166534',
+                                  background: 'rgba(34,197,94,0.14)',
+                                  border: '1px solid rgba(34,197,94,0.30)',
+                                  padding: '5px 9px',
+                                  borderRadius: 999,
                                 }}
                               >
-                                {p.name}
-                              </div>
+                                SAVE {savePct}%
+                              </span>
+                            )}
+                          </div>
 
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                <div style={{ fontSize: 12, fontWeight: 900, color: '#0f172a' }}>R{price.toFixed(2)}</div>
+                          <div
+                            style={{
+                              fontWeight: 900,
+                              fontSize: 20,
+                              lineHeight: 1.15,
+                              color: '#0f172a',
+                              marginBottom: 10,
+                            }}
+                          >
+                            {heroMain.name}
+                          </div>
 
-                                {typeof original === 'number' && (
-                                  <div style={{ fontSize: 12, fontWeight: 800, color: '#94a3b8', textDecoration: 'line-through' }}>
-                                    R{original.toFixed(2)}
-                                  </div>
-                                )}
+                          <p
+                            style={{
+                              margin: 0,
+                              fontSize: 13,
+                              lineHeight: 1.6,
+                              color: '#475569',
+                            }}
+                          >
+                            {clampText(
+                              heroMain.description ||
+                                'Bulk-friendly pricing on everyday products your customers actually want. Miracles do happen, apparently.',
+                              130
+                            )}
+                          </p>
+                        </div>
 
-                                {hasSave && (
-                                  <div
-                                    style={{
-                                      fontSize: 11,
-                                      fontWeight: 900,
-                                      color: '#166534',
-                                      background: 'rgba(34,197,94,0.14)',
-                                      border: '1px solid rgba(34,197,94,0.30)',
-                                      padding: '3px 8px',
-                                      borderRadius: 999,
-                                    }}
-                                  >
-                                    SAVE {savePct}%
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedProduct(p);
-                              }}
+                        <div
+                          style={{
+                            marginTop: 16,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                            <div
                               style={{
-                                background: '#f97316',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: 10,
-                                padding: '10px 12px',
+                                fontSize: 28,
+                                lineHeight: 1,
                                 fontWeight: 900,
-                                fontSize: 12,
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                                boxShadow: '0 14px 28px rgba(249,115,22,0.22)',
+                                color: '#0f172a',
                               }}
                             >
-                              Add
-                            </button>
+                              R{price.toFixed(2)}
+                            </div>
+
+                            {typeof original === 'number' && (
+                              <div
+                                style={{
+                                  fontSize: 15,
+                                  fontWeight: 800,
+                                  color: '#94a3b8',
+                                  textDecoration: 'line-through',
+                                }}
+                              >
+                                R{original.toFixed(2)}
+                              </div>
+                            )}
                           </div>
-                        );
-                      })}
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProduct(heroMain);
+                            }}
+                            style={{
+                              background: '#f97316',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: 12,
+                              padding: '12px 16px',
+                              fontWeight: 900,
+                              fontSize: 13,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              boxShadow: '0 14px 28px rgba(249,115,22,0.22)',
+                            }}
+                          >
+                            View product
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   );
                 })()}
+
+                {heroSide.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                    {heroSide.map((p, idx) => {
+                      const img = getProductImage(p);
+                      const { price, original } = getPrices(p);
+                      const hasSave = typeof original === 'number' && original > price;
+                      const savePct = hasSave ? Math.round(((original - price) / original) * 100) : 0;
+
+                      return (
+                        <div
+                          key={`${p.id ?? p.name}-${idx}`}
+                          onClick={() => setSelectedProduct(p)}
+                          role="button"
+                          title="View product"
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '64px 1fr auto',
+                            gap: 12,
+                            alignItems: 'center',
+                            padding: 12,
+                            borderRadius: 14,
+                            border: '1px solid #e2e8f0',
+                            background: 'white',
+                            cursor: 'pointer',
+                            boxShadow: '0 10px 18px rgba(15,23,42,0.05)',
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 64,
+                              height: 64,
+                              borderRadius: 12,
+                              border: '1px solid #e2e8f0',
+                              overflow: 'hidden',
+                              background: 'linear-gradient(135deg, #f8fafc, #eef2ff)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {img ? (
+                              <img
+                                src={img}
+                                alt={p.name}
+                                loading="lazy"
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover',
+                                  display: 'block',
+                                }}
+                              />
+                            ) : (
+                              <span style={{ fontSize: 11, fontWeight: 900, color: '#64748b' }}>No img</span>
+                            )}
+                          </div>
+
+                          <div style={{ minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontWeight: 900,
+                                fontSize: 13,
+                                color: '#0f172a',
+                                lineHeight: 1.25,
+                                marginBottom: 6,
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              {p.name}
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <div style={{ fontSize: 13, fontWeight: 900, color: '#0f172a' }}>
+                                R{price.toFixed(2)}
+                              </div>
+
+                              {typeof original === 'number' && (
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: 800,
+                                    color: '#94a3b8',
+                                    textDecoration: 'line-through',
+                                  }}
+                                >
+                                  R{original.toFixed(2)}
+                                </div>
+                              )}
+
+                              {hasSave && (
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 900,
+                                    color: '#166534',
+                                    background: 'rgba(34,197,94,0.14)',
+                                    border: '1px solid rgba(34,197,94,0.30)',
+                                    padding: '3px 7px',
+                                    borderRadius: 999,
+                                  }}
+                                >
+                                  SAVE {savePct}%
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProduct(p);
+                            }}
+                            style={{
+                              background: '#fff7ed',
+                              color: '#ea580c',
+                              border: '1px solid #fdba74',
+                              borderRadius: 10,
+                              padding: '10px 12px',
+                              fontWeight: 900,
+                              fontSize: 12,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            View
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {saleItems.length > 1 && (
                   <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 14 }}>
@@ -552,7 +793,14 @@ export default function HomePage() {
                       />
                     ))}
                     {saleItems.length > 10 && (
-                      <span style={{ fontSize: 11, color: '#64748b', fontWeight: 900, marginLeft: 6 }}>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: '#64748b',
+                          fontWeight: 900,
+                          marginLeft: 6,
+                        }}
+                      >
                         +{saleItems.length - 10}
                       </span>
                     )}
@@ -560,15 +808,22 @@ export default function HomePage() {
                 )}
               </>
             ) : (
-              <div style={{ padding: 18, borderRadius: 12, border: '1px dashed #cbd5e1', color: '#64748b', fontWeight: 700 }}>
-                No sale/featured items found. Your store is either empty or your product data is playing hide-and-seek.
+              <div
+                style={{
+                  padding: 18,
+                  borderRadius: 12,
+                  border: '1px dashed #cbd5e1',
+                  color: '#64748b',
+                  fontWeight: 700,
+                }}
+              >
+                No sale or featured items found. Your store is either empty or your product data is once again cosplaying as a mystery.
               </div>
             )}
           </div>
         </div>
       </section>
 
-      {/* Categories Marquee (seamless JS loop) */}
       <section style={{ width: '100%', margin: '40px 0 0', padding: 0 }}>
         <div
           ref={marqueeOuterRef}
@@ -592,10 +847,13 @@ export default function HomePage() {
               transform: 'translateX(0px)',
             }}
           >
-            {/* Group 1 */}
             <div className="catMarqueeGroup" style={{ display: 'flex', gap: 18, paddingRight: 18 }}>
               {MARQUEE_CATEGORIES.map((cat) => (
-                <Link key={`g1-${cat.id}`} to={`/shop?category=${cat.id}`} style={{ flex: '0 0 auto', textDecoration: 'none', color: 'inherit' }}>
+                <Link
+                  key={`g1-${cat.id}`}
+                  to={`/shop?category=${cat.id}`}
+                  style={{ flex: '0 0 auto', textDecoration: 'none', color: 'inherit' }}
+                >
                   <div
                     style={{
                       width: 220,
@@ -623,10 +881,13 @@ export default function HomePage() {
               ))}
             </div>
 
-            {/* Group 2 (duplicate) */}
             <div className="catMarqueeGroup" style={{ display: 'flex', gap: 18, paddingRight: 18 }}>
               {MARQUEE_CATEGORIES.map((cat) => (
-                <Link key={`g2-${cat.id}`} to={`/shop?category=${cat.id}`} style={{ flex: '0 0 auto', textDecoration: 'none', color: 'inherit' }}>
+                <Link
+                  key={`g2-${cat.id}`}
+                  to={`/shop?category=${cat.id}`}
+                  style={{ flex: '0 0 auto', textDecoration: 'none', color: 'inherit' }}
+                >
                   <div
                     style={{
                       width: 220,
@@ -659,7 +920,12 @@ export default function HomePage() {
 
       <Footer />
 
-      {selectedProduct && <ProductModal product={selectedProduct} onClose={() => setSelectedProduct(null)} />}
+      {selectedProduct && (
+        <ProductModal
+          product={selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+        />
+      )}
     </div>
   );
 }

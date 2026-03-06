@@ -69,8 +69,7 @@ export default function DealsPage() {
                 Deals & Specials
               </h1>
               <p style={{ color: "rgba(255,255,255,0.85)", maxWidth: 760 }}>
-                Current wholesale specials and discounted bulk items. Stock moves fast,
-                because humans love saving money almost as much as they love complaining.
+               Save big on our promotional stock, limited time offer and exclusive deals.  "Smarter spending starts here"
               </p>
             </div>
           </div>
