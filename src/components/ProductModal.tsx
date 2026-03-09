@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { X, ShoppingCart, Ruler, Weight } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { X, ShoppingCart, Ruler, Weight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Product } from '../types';
 import { useStore } from '../context/StoreContext';
 import { useNavigate } from 'react-router-dom';
@@ -9,12 +9,67 @@ interface ProductModalProps {
   onClose: () => void;
 }
 
+function normalizeImages(product: Product): string[] {
+  const rawImages = (product as any).images;
+  const fallback =
+    (product as any).image ||
+    (product as any).imageUrl ||
+    (product as any).image_url ||
+    '';
+
+  const out: string[] = [];
+
+  if (Array.isArray(rawImages)) {
+    for (const item of rawImages) {
+      if (typeof item === 'string' && item.trim()) {
+        out.push(item.trim());
+      } else if (item && typeof item === 'object') {
+        if (typeof item.url === 'string' && item.url.trim()) out.push(item.url.trim());
+        if (typeof item.src === 'string' && item.src.trim()) out.push(item.src.trim());
+      }
+    }
+  } else if (typeof rawImages === 'string' && rawImages.trim()) {
+    try {
+      const parsed = JSON.parse(rawImages);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (typeof item === 'string' && item.trim()) out.push(item.trim());
+          else if (item && typeof item === 'object') {
+            if (typeof item.url === 'string' && item.url.trim()) out.push(item.url.trim());
+            if (typeof item.src === 'string' && item.src.trim()) out.push(item.src.trim());
+          }
+        }
+      } else {
+        out.push(rawImages.trim());
+      }
+    } catch {
+      out.push(rawImages.trim());
+    }
+  }
+
+  if (fallback && !out.includes(fallback)) {
+    out.unshift(fallback);
+  }
+
+  return Array.from(new Set(out)).filter(Boolean);
+}
+
 export default function ProductModal({ product, onClose }: ProductModalProps) {
   const { addToCart } = useStore();
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
+
+  const imageList = useMemo(() => normalizeImages(product), [product]);
+  const [selectedImage, setSelectedImage] = useState<string>('');
+
+  useEffect(() => {
+    setSelectedImage(
+      imageList[0] ||
+        'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=800&q=80'
+    );
+  }, [imageList, product]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
@@ -23,13 +78,19 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const productImage =
-    (product as any).image ||
-    (product as any).imageUrl ||
-    (product as any).image_url ||
-    (Array.isArray((product as any).images) && (product as any).images.length > 0
-      ? (product as any).images[0]
-      : '');
+  // lock background scroll while modal is open
+  useEffect(() => {
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, []);
 
   const bulkPrice = (product as any).bulkPrice;
   const bulkMinQty = (product as any).bulkMinQty;
@@ -40,11 +101,30 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
   const stockCount = Number(product.stock || 0);
   const hasStock = stockCount > 0;
 
+  const lengthCm = (product as any).lengthCm;
+  const widthCm = (product as any).widthCm;
+  const heightCm = (product as any).heightCm;
+  const weightKg = (product as any).weightKg;
+
   const hasDimensions =
-    (product as any).length ||
-    (product as any).width ||
-    (product as any).height ||
-    (product as any).weight;
+    (lengthCm !== undefined && lengthCm !== null && lengthCm !== '') ||
+    (widthCm !== undefined && widthCm !== null && widthCm !== '') ||
+    (heightCm !== undefined && heightCm !== null && heightCm !== '') ||
+    (weightKg !== undefined && weightKg !== null && weightKg !== '');
+
+  const currentIndex = Math.max(0, imageList.findIndex((img) => img === selectedImage));
+
+  const goPrevImage = () => {
+    if (imageList.length <= 1) return;
+    const nextIndex = currentIndex <= 0 ? imageList.length - 1 : currentIndex - 1;
+    setSelectedImage(imageList[nextIndex]);
+  };
+
+  const goNextImage = () => {
+    if (imageList.length <= 1) return;
+    const nextIndex = currentIndex >= imageList.length - 1 ? 0 : currentIndex + 1;
+    setSelectedImage(imageList[nextIndex]);
+  };
 
   const handleAdd = () => {
     if (!hasStock) return;
@@ -80,15 +160,17 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
         style={{
           background: 'white',
           borderRadius: 14,
-          maxWidth: 960,
           width: '100%',
-          maxHeight: '90vh',
-          overflow: 'auto',
+          maxWidth: isMobile ? '100%' : 980,
+          height: isMobile ? '92vh' : 670,
+          maxHeight: '92vh',
+          overflow: 'hidden',
           boxShadow: '0 25px 60px rgba(0,0,0,0.4)',
           animation: 'modalIn 0.2s ease',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
-        {/* Header */}
         <div
           style={{
             background: 'linear-gradient(135deg, #f97316, #ea580c)',
@@ -98,6 +180,7 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
             justifyContent: 'space-between',
             alignItems: 'flex-start',
             gap: 12,
+            flexShrink: 0,
           }}
         >
           <div style={{ minWidth: 0 }}>
@@ -144,61 +227,126 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
           </button>
         </div>
 
-        {/* Body */}
         <div
           style={{
             display: 'grid',
             gridTemplateColumns: isMobile ? '1fr' : '1.02fr 1fr',
             gap: 0,
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
           }}
         >
-          {/* Left Side: Image + Dimensions */}
           <div
             style={{
-              padding: isMobile ? 18 : 24,
+              padding: isMobile ? 18 : 22,
               borderRight: isMobile ? 'none' : '1px solid #e2e8f0',
               borderBottom: isMobile ? '1px solid #e2e8f0' : 'none',
               display: 'flex',
               flexDirection: 'column',
-              gap: 16,
+              gap: 14,
+              minHeight: 0,
+              overflowY: 'auto',
             }}
           >
             <div
               style={{
+                position: 'relative',
                 width: '100%',
-                minHeight: isMobile ? 260 : 360,
-                maxHeight: isMobile ? 320 : 430,
+                height: isMobile ? 280 : 350,
                 background: '#f8fafc',
                 border: '1px solid #e2e8f0',
                 borderRadius: 12,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
                 overflow: 'hidden',
-                padding: 16,
+                padding: isMobile ? 14 : 18,
+                flexShrink: 0,
               }}
             >
-              <img
-                src={
-                  productImage ||
-                  'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=800&q=80'
-                }
-                alt={product.name}
+              <div
                 style={{
                   width: '100%',
                   height: '100%',
-                  objectFit: 'contain',
-                  display: 'block',
+                  background: 'white',
+                  border: '1px solid #edf2f7',
+                  borderRadius: 10,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  padding: isMobile ? 10 : 14,
                 }}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src =
-                    'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=800&q=80';
-                }}
-              />
+              >
+                <img
+                  src={selectedImage}
+                  alt={product.name}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    width: 'auto',
+                    height: 'auto',
+                    objectFit: 'contain',
+                    display: 'block',
+                  }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=800&q=80';
+                  }}
+                />
+              </div>
+
+              {imageList.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={goPrevImage}
+                    style={{
+                      position: 'absolute',
+                      left: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'rgba(255,255,255,0.94)',
+                      border: '1px solid #dbe2ea',
+                      borderRadius: 999,
+                      width: 38,
+                      height: 38,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 10px rgba(15, 23, 42, 0.08)',
+                    }}
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={goNextImage}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'rgba(255,255,255,0.94)',
+                      border: '1px solid #dbe2ea',
+                      borderRadius: 999,
+                      width: 38,
+                      height: 38,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 10px rgba(15, 23, 42, 0.08)',
+                    }}
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </>
+              )}
             </div>
 
             {hasDimensions && (
-              <div>
+              <div style={{ flexShrink: 0 }}>
                 <h4
                   style={{
                     margin: '0 0 10px',
@@ -220,7 +368,7 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
                     gap: 10,
                   }}
                 >
-                  {(product as any).length && (
+                  {lengthCm !== undefined && lengthCm !== null && lengthCm !== '' && (
                     <div
                       style={{
                         background: '#f8fafc',
@@ -251,12 +399,12 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
                           fontSize: 15,
                         }}
                       >
-                        {(product as any).length} cm
+                        {lengthCm} cm
                       </div>
                     </div>
                   )}
 
-                  {(product as any).width && (
+                  {widthCm !== undefined && widthCm !== null && widthCm !== '' && (
                     <div
                       style={{
                         background: '#f8fafc',
@@ -287,12 +435,12 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
                           fontSize: 15,
                         }}
                       >
-                        {(product as any).width} cm
+                        {widthCm} cm
                       </div>
                     </div>
                   )}
 
-                  {(product as any).height && (
+                  {heightCm !== undefined && heightCm !== null && heightCm !== '' && (
                     <div
                       style={{
                         background: '#f8fafc',
@@ -323,12 +471,12 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
                           fontSize: 15,
                         }}
                       >
-                        {(product as any).height} cm
+                        {heightCm} cm
                       </div>
                     </div>
                   )}
 
-                  {(product as any).weight && (
+                  {weightKg !== undefined && weightKg !== null && weightKg !== '' && (
                     <div
                       style={{
                         background: '#f8fafc',
@@ -359,7 +507,7 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
                           fontSize: 15,
                         }}
                       >
-                        {(product as any).weight} kg
+                        {weightKg} kg
                       </div>
                     </div>
                   )}
@@ -368,17 +516,17 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
             )}
           </div>
 
-          {/* Right Side: Details */}
           <div
             style={{
-              padding: isMobile ? 18 : 24,
+              padding: isMobile ? 18 : 22,
               display: 'flex',
               flexDirection: 'column',
-              gap: 16,
+              gap: 14,
+              minHeight: 0,
+              overflow: 'hidden',
             }}
           >
-            {/* Price */}
-            <div>
+            <div style={{ flexShrink: 0 }}>
               <div
                 style={{
                   fontSize: isMobile ? 28 : 34,
@@ -424,8 +572,7 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
               )}
             </div>
 
-            {/* Description */}
-            <div>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <h4
                 style={{
                   margin: '0 0 8px',
@@ -435,66 +582,75 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
                   textTransform: 'uppercase',
                   letterSpacing: 0.5,
                   fontFamily: 'Barlow, sans-serif',
+                  flexShrink: 0,
                 }}
               >
                 Description
               </h4>
 
-              <p
+              <div
                 style={{
-                  margin: 0,
-                  fontSize: 14,
-                  lineHeight: 1.75,
-                  color: '#475569',
-                  whiteSpace: 'pre-wrap',
+                  flex: 1,
+                  minHeight: 120,
+                  maxHeight: isMobile ? 180 : 260,
+                  overflowY: 'auto',
+                  paddingRight: 6,
                 }}
               >
-                {product.description || 'No description available.'}
-              </p>
-            </div>
-
-            {/* Highlights */}
-            {(product as any).tags && (product as any).tags.length > 0 && (
-              <div>
-                <h4
+                <p
                   style={{
-                    margin: '0 0 8px',
-                    fontSize: 13,
-                    fontWeight: 800,
-                    color: '#1e293b',
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.5,
-                    fontFamily: 'Barlow, sans-serif',
+                    margin: 0,
+                    fontSize: 14,
+                    lineHeight: 1.75,
+                    color: '#475569',
+                    whiteSpace: 'pre-wrap',
                   }}
                 >
-                  Highlights
-                </h4>
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  {(product as any).tags.map((t: string, i: number) => (
-                    <li
-                      key={i}
+                  {product.description || 'No description available.'}
+                </p>
+
+                {(product as any).tags && (product as any).tags.length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <h4
                       style={{
+                        margin: '0 0 8px',
                         fontSize: 13,
-                        color: '#475569',
-                        marginBottom: 6,
-                        lineHeight: 1.5,
+                        fontWeight: 800,
+                        color: '#1e293b',
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                        fontFamily: 'Barlow, sans-serif',
                       }}
                     >
-                      {t}
-                    </li>
-                  ))}
-                </ul>
+                      Highlights
+                    </h4>
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {(product as any).tags.map((t: string, i: number) => (
+                        <li
+                          key={i}
+                          style={{
+                            fontSize: 13,
+                            color: '#475569',
+                            marginBottom: 6,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {t}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
-            {/* Qty + Add */}
             <div
               style={{
                 display: 'flex',
                 alignItems: isMobile ? 'stretch' : 'center',
                 flexDirection: isMobile ? 'column' : 'row',
                 gap: 10,
-                marginTop: 'auto',
+                flexShrink: 0,
               }}
             >
               <div

@@ -55,6 +55,19 @@ export const defaultCategories: Category[] = [
     icon: "📱",
     description: "Mobile devices",
   },
+// NEW
+  {
+    id: "bathroom-accessories",
+    name: "Bathroom & Accessories",
+    icon: "🛁",
+    description: "Bathroom essentials and accessories",
+  },
+  {
+    id: "gardening",
+    name: "Gardening",
+    icon: "🏡",
+    description: "Gardening tools and supplies",
+  }
 ];
 
 /**

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState, ReactNo
 import { Product, Category, CartItem, Order } from "../types";
 import { defaultCategories } from "../data/seedData";
 import { v4 as uuidv4 } from "uuid";
-import { supabase } from "../lib/supabase"; // ✅ make sure this path exists
+import { supabase } from "../lib/supabase";
 
 interface StoreContextType {
   // Products
@@ -31,12 +31,12 @@ interface StoreContextType {
   placeOrder: (customer: Order["customer"], deliveryMethod: Order["deliveryMethod"]) => Order;
   updateOrderStatus: (id: string, status: Order["status"]) => void;
 
-  // Auth (simple)
+  // Auth
   isAdmin: boolean;
   setIsAdmin: (v: boolean) => void;
   adminPassword: string;
 
-  // Loading flags (optional but useful)
+  // Loading
   loadingProducts: boolean;
   loadingCategories: boolean;
 }
@@ -54,7 +54,6 @@ function loadLS<T>(key: string, fallback: T): T {
 
 /**
  * ✅ Map Supabase product rows to your app Product type.
- * Adjust field names if your DB uses different columns.
  */
 function mapProductRow(row: any): Product {
   const price =
@@ -72,10 +71,40 @@ function mapProductRow(row: any): Product {
     category: String(row.category ?? ""),
     price,
     stock: Number(row.stock ?? 0),
-    image: row.image ?? row.image_url ?? null, // supports either field
+    image: row.image ?? row.image_url ?? null,
     images: row.images ?? null,
     featured: Boolean(row.featured ?? row.is_featured ?? false),
     onSale: Boolean(row.onSale ?? row.on_sale ?? false),
+    salePrice:
+      typeof row.sale_price === "number"
+        ? row.sale_price
+        : typeof row.salePrice === "number"
+          ? row.salePrice
+          : undefined,
+    lengthCm:
+      row.length_cm !== undefined && row.length_cm !== null
+        ? Number(row.length_cm)
+        : row.lengthCm !== undefined && row.lengthCm !== null
+          ? Number(row.lengthCm)
+          : undefined,
+    widthCm:
+      row.width_cm !== undefined && row.width_cm !== null
+        ? Number(row.width_cm)
+        : row.widthCm !== undefined && row.widthCm !== null
+          ? Number(row.widthCm)
+          : undefined,
+    heightCm:
+      row.height_cm !== undefined && row.height_cm !== null
+        ? Number(row.height_cm)
+        : row.heightCm !== undefined && row.heightCm !== null
+          ? Number(row.heightCm)
+          : undefined,
+    weightKg:
+      row.weight_kg !== undefined && row.weight_kg !== null
+        ? Number(row.weight_kg)
+        : row.weightKg !== undefined && row.weightKg !== null
+          ? Number(row.weightKg)
+          : undefined,
     createdAt: row.created_at ? String(row.created_at) : new Date().toISOString(),
   } as Product;
 }
@@ -89,11 +118,9 @@ function mapCategoryRow(row: any): Category {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  // ✅ products come from Supabase (no demo products)
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
-  // ✅ categories: load from Supabase if available, else fallback to local
   const [categories, setCategories] = useState<Category[]>(() =>
     loadLS("sum_categories", defaultCategories)
   );
@@ -105,7 +132,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const adminPassword = "SuperUAdmin2024";
 
-  // ✅ Persist categories + orders locally (fine)
   useEffect(() => {
     localStorage.setItem("sum_categories", JSON.stringify(categories));
   }, [categories]);
@@ -114,11 +140,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("sum_orders", JSON.stringify(orders));
   }, [orders]);
 
-  // -----------------------------
-  // ✅ Supabase loaders
-  // -----------------------------
   const fetchProducts = async () => {
     setLoadingProducts(true);
+
     const { data, error } = await supabase
       .from("products")
       .select("*")
@@ -138,7 +162,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const fetchCategories = async () => {
     setLoadingCategories(true);
 
-    // If you don't have a categories table yet, this will error and we fallback.
     const { data, error } = await supabase
       .from("categories")
       .select("*")
@@ -154,7 +177,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setLoadingCategories(false);
   };
 
-  // ✅ Load on boot
   useEffect(() => {
     let alive = true;
 
@@ -174,11 +196,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // -----------------------------
-  // ✅ Product mutations (Supabase)
-  // -----------------------------
   const addProduct = async (p: Omit<Product, "id" | "createdAt">) => {
-    // Try to support either "price" or "price_cents" schema.
     const insertPayload: any = {
       name: p.name,
       description: p.description ?? "",
@@ -189,9 +207,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       images: (p as any).images ?? null,
       featured: (p as any).featured ?? false,
       on_sale: (p as any).onSale ?? false,
+      sale_price:
+        (p as any).salePrice !== undefined && (p as any).salePrice !== ""
+          ? Number((p as any).salePrice)
+          : null,
+      length_cm:
+        (p as any).lengthCm !== undefined && (p as any).lengthCm !== ""
+          ? Number((p as any).lengthCm)
+          : null,
+      width_cm:
+        (p as any).widthCm !== undefined && (p as any).widthCm !== ""
+          ? Number((p as any).widthCm)
+          : null,
+      height_cm:
+        (p as any).heightCm !== undefined && (p as any).heightCm !== ""
+          ? Number((p as any).heightCm)
+          : null,
+      weight_kg:
+        (p as any).weightKg !== undefined && (p as any).weightKg !== ""
+          ? Number((p as any).weightKg)
+          : null,
     };
 
-    // If your DB has price_cents, store that. If not, store price.
     if (typeof (p as any).price === "number") {
       insertPayload.price = (p as any).price;
       insertPayload.price_cents = Math.round((p as any).price * 100);
@@ -226,6 +263,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if ((patch as any).onSale !== undefined) updatePayload.on_sale = (patch as any).onSale;
     if ((patch as any).on_sale !== undefined) updatePayload.on_sale = (patch as any).on_sale;
 
+    if ((patch as any).salePrice !== undefined) {
+      updatePayload.sale_price =
+        (patch as any).salePrice === "" || (patch as any).salePrice === null
+          ? null
+          : Number((patch as any).salePrice);
+    }
+
+    if ((patch as any).lengthCm !== undefined) {
+      updatePayload.length_cm =
+        (patch as any).lengthCm === "" || (patch as any).lengthCm === null
+          ? null
+          : Number((patch as any).lengthCm);
+    }
+
+    if ((patch as any).widthCm !== undefined) {
+      updatePayload.width_cm =
+        (patch as any).widthCm === "" || (patch as any).widthCm === null
+          ? null
+          : Number((patch as any).widthCm);
+    }
+
+    if ((patch as any).heightCm !== undefined) {
+      updatePayload.height_cm =
+        (patch as any).heightCm === "" || (patch as any).heightCm === null
+          ? null
+          : Number((patch as any).heightCm);
+    }
+
+    if ((patch as any).weightKg !== undefined) {
+      updatePayload.weight_kg =
+        (patch as any).weightKg === "" || (patch as any).weightKg === null
+          ? null
+          : Number((patch as any).weightKg);
+    }
+
     if (patch.price !== undefined && typeof patch.price === "number") {
       updatePayload.price = patch.price;
       updatePayload.price_cents = Math.round(patch.price * 100);
@@ -253,8 +325,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const clearProducts = async () => {
-    // ⚠️ This deletes EVERYTHING in products table.
-    // Supabase doesn't support "truncate" via client. We'll delete by condition.
     const { error } = await supabase.from("products").delete().neq("id", "___never___");
 
     if (error) {
@@ -265,11 +335,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await fetchProducts();
   };
 
-  // -----------------------------
-  // ✅ Category mutations (Supabase if table exists)
-  // -----------------------------
   const addCategory = async (c: Omit<Category, "id">) => {
-    // Try Supabase first
     const payload = { name: c.name, icon: (c as any).icon ?? "•" };
     const { error } = await supabase.from("categories").insert([payload]);
 
@@ -294,9 +360,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await fetchCategories();
   };
 
-  // -----------------------------
-  // ✅ Cart logic (local)
-  // -----------------------------
   const addToCart = (product: Product, qty = 1) => {
     setCart((prev) => {
       const existing = prev.find((i) => i.product.id === product.id);
@@ -331,9 +394,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
   const cartCount = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
 
-  // -----------------------------
-  // ✅ Orders (local)
-  // -----------------------------
   const placeOrder = (
     customer: Order["customer"],
     deliveryMethod: Order["deliveryMethod"]

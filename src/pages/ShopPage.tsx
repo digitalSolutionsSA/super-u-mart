@@ -26,19 +26,21 @@ export default function ShopPage() {
   const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
 
   const SHOP_CATEGORY_ORDER = useMemo(
-    () => [
-      "Kitchen and Home",
-      "Tools & Hardware",
-      "Electronics & Gaming",
-      "Baby Kids & Toys",
-      "Sports & Outdoor",
-      "Car Accessories",
-      "Lights & Solar",
-      "Computers & Peripherals",
-      "Cellphones & Tablets",
-    ],
-    []
-  );
+  () => [
+    "Kitchen and Home",
+    "Tools & Hardware",
+    "Electronics & Gaming",
+    "Baby Kids & Toys",
+    "Sports & Outdoor",
+    "Car Accessories",
+    "Bathroom & Accessories",
+    "Gardening",
+    "Lights & Solar",
+    "Computers & Peripherals",
+    "Cellphones & Tablets",
+  ],
+  []
+);
 
   // Canonical aliases for messy stored values coming from DB/admin
   const CATEGORY_ALIASES = useMemo(
@@ -102,6 +104,21 @@ export default function ShopPage() {
         "computer",
         "peripherals",
       ],
+      "bathroom-and-accessories": [
+  "bathroom-and-accessories",
+  "bathroom-accessories",
+  "bathroom-and-accessory",
+  "bathroom",
+  "accessories",
+  "bathroom-&-accessories",
+],
+"gardening": [
+  "gardening",
+  "garden",
+  "gardens",
+  "garden-tools",
+  "garden-supplies",
+],
     }),
     []
   );

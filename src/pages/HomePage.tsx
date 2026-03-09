@@ -15,6 +15,8 @@ const MARQUEE_CATEGORIES = [
   { id: 'car-accessories', name: 'Car Accessories', image: '/categories/car-accessories.png' },
   { id: 'lights-solar', name: 'Lights & Solar', image: '/categories/lights-solar.png' },
   { id: 'cellphones-tablets', name: 'Cellphones & Tablets', image: '/categories/cellphones-tablets.png' },
+  { id: 'bathroom-accessories', name: 'Bathroom & Accessories', image: '/categories/bathroom.png' },
+  { id: 'gardening', name: 'Gardening', image: '/categories/gardening.png' },
 ];
 
 function isOnSale(p: any): boolean {

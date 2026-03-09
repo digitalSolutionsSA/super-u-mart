@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Camera, ImagePlus, Save, X } from "lucide-react";
+import { Camera, ImagePlus, Save, X, ScanLine } from "lucide-react";
 import { useStore } from "../context/StoreContext";
 import { supabase } from "../lib/supabase";
 
@@ -8,18 +8,17 @@ const DARK_BLUE = "#111d5e";
 const ACCENT_ORANGE = "#f97316";
 const STORAGE_BUCKET = "product-images";
 
-/**
- * ✅ ONLY categories allowed.
- * These ids are what will be stored in product.category.
- */
 const PERMANENT_CATEGORIES = [
   { id: "kitchen-appliances", name: "Kitchen and Home" },
   { id: "tools", name: "Tools" },
   { id: "electronics-gaming", name: "Electronics & Gaming" },
+  { id: "cellphones-tablets", name: "Cellphones & Tablets" },
   { id: "toys", name: "Baby Kids & Toys" },
   { id: "sports-outdoor", name: "Sports & Outdoor" },
   { id: "car-accessories", name: "Car Accessories" },
   { id: "lights-solar", name: "Lights & Solar" },
+  { id: "bathroom-accessories", name: "Bathroom & Accessories" },
+  { id: "gardening", name: "Gardening" }
 ] as const;
 
 type CategoryId = (typeof PERMANENT_CATEGORIES)[number]["id"];
@@ -113,8 +112,10 @@ export default function AdminProductForm() {
 
   const [name, setName] = useState("");
   const [price, setPrice] = useState<number>(0);
+  const [stock, setStock] = useState<number | "">(0);
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<string>("");
+  const [barcode, setBarcode] = useState("");
 
   const [onSale, setOnSale] = useState<boolean>(false);
   const [salePrice, setSalePrice] = useState<number | "">("");
@@ -124,22 +125,26 @@ export default function AdminProductForm() {
   const [heightCm, setHeightCm] = useState<number | "">("");
   const [weightKg, setWeightKg] = useState<number | "">("");
 
-  // Existing/saved remote URLs
   const [images, setImages] = useState<string[]>([]);
-  // New files selected this session
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  // Local previews for pending files
   const [pendingPreviews, setPendingPreviews] = useState<string[]>([]);
 
   const [saving, setSaving] = useState(false);
+
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerError, setScannerError] = useState("");
+  const scannerRef = useRef<any>(null);
+  const scannerRegionId = "barcode-scanner-region";
 
   useEffect(() => {
     if (!existing) {
       if (!id) {
         setName("");
         setPrice(0);
+        setStock(0);
         setDescription("");
         setCategory("");
+        setBarcode("");
         setOnSale(false);
         setSalePrice("");
         setLengthCm("");
@@ -155,8 +160,10 @@ export default function AdminProductForm() {
 
     setName(existing?.name ?? "");
     setPrice(Number(existing?.price ?? 0));
+    setStock(existing?.stock ?? 0);
     setDescription(existing?.description ?? "");
     setCategory(normalizeCategoryId(existing?.category));
+    setBarcode(existing?.barcode ?? "");
     setOnSale(!!existing?.onSale);
     setSalePrice(existing?.salePrice ?? "");
     setLengthCm(existing?.lengthCm ?? "");
@@ -177,6 +184,68 @@ export default function AdminProductForm() {
       });
     };
   }, [pendingPreviews]);
+
+  useEffect(() => {
+    if (!scannerOpen) return;
+
+    let cancelled = false;
+
+    const startScanner = async () => {
+      try {
+        setScannerError("");
+
+        const { Html5Qrcode } = await import("html5-qrcode");
+        if (cancelled) return;
+
+        const html5QrCode = new Html5Qrcode(scannerRegionId);
+        scannerRef.current = html5QrCode;
+
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 120 },
+            aspectRatio: 1.7778,
+          },
+          (decodedText: string) => {
+            setBarcode(decodedText);
+            stopScanner();
+            setScannerOpen(false);
+          },
+          () => {
+            // ignore frame errors
+          }
+        );
+      } catch (error: any) {
+        console.error("Barcode scanner failed to start:", error);
+        setScannerError("Could not access camera or start scanner.");
+      }
+    };
+
+    startScanner();
+
+    return () => {
+      cancelled = true;
+      stopScanner();
+    };
+  }, [scannerOpen]);
+
+  const stopScanner = async () => {
+    try {
+      if (scannerRef.current) {
+        const instance = scannerRef.current;
+        scannerRef.current = null;
+
+        try {
+          await instance.stop();
+        } catch {}
+
+        try {
+          await instance.clear();
+        } catch {}
+      }
+    } catch {}
+  };
 
   const onPickImages = (files: FileList | null) => {
     if (!files?.length) return;
@@ -218,6 +287,11 @@ export default function AdminProductForm() {
       return;
     }
 
+    if (!Number.isFinite(Number(stock)) || Number(stock) < 0) {
+      alert("Stock must be 0 or more.");
+      return;
+    }
+
     if (!category) {
       alert("Please select a category.");
       return;
@@ -237,8 +311,10 @@ export default function AdminProductForm() {
       const payload: any = {
         name: name.trim(),
         price: Number(price),
+        stock: Number(stock),
         description: description.trim(),
         category: String(category),
+        barcode: barcode.trim() || null,
 
         onSale,
         salePrice: onSale && salePrice !== "" ? Number(salePrice) : undefined,
@@ -273,242 +349,323 @@ export default function AdminProductForm() {
   ];
 
   return (
-    <form onSubmit={onSave}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold text-white">
-            {existing ? "Edit Product" : "Add Product"}
-          </h1>
-          <p className="mt-1 text-sm text-white/80">
-            Upload images or take a photo, add dimensions, pricing, and sale settings.
-          </p>
+    <>
+      <form onSubmit={onSave}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-extrabold text-white">
+              {existing ? "Edit Product" : "Add Product"}
+            </h1>
+            <p className="mt-1 text-sm text-white/80">
+              Upload images or take a photo, add dimensions, pricing, sale settings, and barcode.
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("/admin/products")}
+              className="inline-flex items-center gap-2 rounded-xl border border-white bg-white px-4 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-60"
+              style={{ color: DARK_BLUE }}
+              disabled={saving}
+            >
+              <X size={16} />
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              style={{ backgroundColor: ACCENT_ORANGE }}
+            >
+              <Save size={16} />
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
         </div>
 
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => navigate("/admin/products")}
-            className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-            disabled={saving}
-          >
-            <X size={16} />
-            Cancel
-          </button>
+        <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
+          <div className="rounded-2xl border bg-white p-4 shadow-sm md:p-6">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Product Name">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                  placeholder="e.g. Toilet Paper 2-ply 24 pack"
+                />
+              </Field>
 
-          <button
-            type="submit"
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-            style={{ backgroundColor: ACCENT_ORANGE }}
-          >
-            <Save size={16} />
-            {saving ? "Saving..." : "Save"}
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
-        <div className="rounded-2xl border bg-white p-4 shadow-sm md:p-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Product Name">
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-xl border px-3 py-2 text-sm"
-                placeholder="e.g. Toilet Paper 2-ply 24 pack"
-              />
-            </Field>
-
-            <Field label="Category">
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-xl border px-3 py-2 text-sm"
-              >
-                <option value="" disabled>
-                  Select a category...
-                </option>
-                {PERMANENT_CATEGORIES.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
+              <Field label="Category">
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                >
+                  <option value="" disabled>
+                    Select a category...
                   </option>
-                ))}
-              </select>
-            </Field>
+                  {PERMANENT_CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
 
-            <Field label="Price (R)">
-              <input
-                type="number"
-                value={price}
-                onChange={(e) => setPrice(Number(e.target.value))}
-                className="w-full rounded-xl border px-3 py-2 text-sm"
-                placeholder="e.g. 99.99"
-              />
-            </Field>
+              <Field label="Price (R)">
+                <input
+                  type="number"
+                  value={price}
+                  onChange={(e) => setPrice(Number(e.target.value))}
+                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                  placeholder="e.g. 99.99"
+                />
+              </Field>
 
-            <Field label="Sale">
-              <div className="flex items-center gap-3">
-                <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <Field label="Stock">
+                <input
+                  type="number"
+                  min="0"
+                  value={stock}
+                  onChange={(e) =>
+                    setStock(e.target.value === "" ? "" : Number(e.target.value))
+                  }
+                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                  placeholder="e.g. 25"
+                />
+              </Field>
+
+              <Field label="Barcode">
+                <div className="flex gap-2">
                   <input
-                    type="checkbox"
-                    checked={onSale}
-                    onChange={(e) => setOnSale(e.target.checked)}
+                    type="text"
+                    value={barcode}
+                    onChange={(e) => setBarcode(e.target.value)}
+                    className="w-full rounded-xl border px-3 py-2 text-sm"
+                    placeholder="Scan or type barcode"
                   />
-                  On Sale (shows on Home featured)
-                </label>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => setScannerOpen(true)}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-white"
+                    style={{ backgroundColor: DARK_BLUE }}
+                  >
+                    <ScanLine size={16} />
+                    Scan
+                  </button>
+                </div>
+              </Field>
 
-              {onSale && (
-                <div className="mt-2">
+              <Field label="Sale">
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={onSale}
+                      onChange={(e) => setOnSale(e.target.checked)}
+                    />
+                    On Sale (shows on Home featured)
+                  </label>
+                </div>
+
+                {onSale && (
+                  <div className="mt-2">
+                    <input
+                      type="number"
+                      value={salePrice}
+                      onChange={(e) =>
+                        setSalePrice(e.target.value === "" ? "" : Number(e.target.value))
+                      }
+                      className="w-full rounded-xl border px-3 py-2 text-sm"
+                      placeholder="Sale price (R)"
+                    />
+                  </div>
+                )}
+              </Field>
+            </div>
+
+            <div className="mt-4">
+              <Field label="Description">
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="min-h-[120px] w-full rounded-xl border px-3 py-2 text-sm"
+                  placeholder="Write a short product description..."
+                />
+              </Field>
+            </div>
+
+            <div className="mt-6">
+              <div className="text-sm font-extrabold" style={{ color: DARK_BLUE }}>
+                Dimensions
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <Field label="Length (cm)">
                   <input
                     type="number"
-                    value={salePrice}
+                    value={lengthCm}
                     onChange={(e) =>
-                      setSalePrice(e.target.value === "" ? "" : Number(e.target.value))
+                      setLengthCm(e.target.value === "" ? "" : Number(e.target.value))
                     }
                     className="w-full rounded-xl border px-3 py-2 text-sm"
-                    placeholder="Sale price (R)"
                   />
-                </div>
-              )}
-            </Field>
-          </div>
+                </Field>
 
-          <div className="mt-4">
-            <Field label="Description">
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="min-h-[120px] w-full rounded-xl border px-3 py-2 text-sm"
-                placeholder="Write a short product description..."
-              />
-            </Field>
-          </div>
+                <Field label="Width (cm)">
+                  <input
+                    type="number"
+                    value={widthCm}
+                    onChange={(e) =>
+                      setWidthCm(e.target.value === "" ? "" : Number(e.target.value))
+                    }
+                    className="w-full rounded-xl border px-3 py-2 text-sm"
+                  />
+                </Field>
 
-          <div className="mt-6">
-            <div className="text-sm font-extrabold" style={{ color: DARK_BLUE }}>
-              Dimensions
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Field label="Length (cm)">
-                <input
-                  type="number"
-                  value={lengthCm}
-                  onChange={(e) =>
-                    setLengthCm(e.target.value === "" ? "" : Number(e.target.value))
-                  }
-                  className="w-full rounded-xl border px-3 py-2 text-sm"
-                />
-              </Field>
+                <Field label="Height (cm)">
+                  <input
+                    type="number"
+                    value={heightCm}
+                    onChange={(e) =>
+                      setHeightCm(e.target.value === "" ? "" : Number(e.target.value))
+                    }
+                    className="w-full rounded-xl border px-3 py-2 text-sm"
+                  />
+                </Field>
 
-              <Field label="Width (cm)">
-                <input
-                  type="number"
-                  value={widthCm}
-                  onChange={(e) =>
-                    setWidthCm(e.target.value === "" ? "" : Number(e.target.value))
-                  }
-                  className="w-full rounded-xl border px-3 py-2 text-sm"
-                />
-              </Field>
-
-              <Field label="Height (cm)">
-                <input
-                  type="number"
-                  value={heightCm}
-                  onChange={(e) =>
-                    setHeightCm(e.target.value === "" ? "" : Number(e.target.value))
-                  }
-                  className="w-full rounded-xl border px-3 py-2 text-sm"
-                />
-              </Field>
-
-              <Field label="Weight (kg)">
-                <input
-                  type="number"
-                  value={weightKg}
-                  onChange={(e) =>
-                    setWeightKg(e.target.value === "" ? "" : Number(e.target.value))
-                  }
-                  className="w-full rounded-xl border px-3 py-2 text-sm"
-                />
-              </Field>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border bg-white p-4 shadow-sm md:p-6">
-          <div className="text-sm font-extrabold" style={{ color: DARK_BLUE }}>
-            Images
-          </div>
-          <p className="mt-1 text-xs text-slate-500">
-            Upload from device or take a photo (phone camera).
-          </p>
-
-          <div className="mt-4 flex flex-col gap-3">
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50">
-              <ImagePlus size={16} />
-              Upload images
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => onPickImages(e.target.files)}
-              />
-            </label>
-
-            <label
-              className="flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white"
-              style={{ backgroundColor: DARK_BLUE }}
-            >
-              <Camera size={16} />
-              Take photo
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={(e) => onPickImages(e.target.files)}
-              />
-            </label>
-          </div>
-
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            {gallery.map((item, i) => (
-              <div key={`${item.type}-${item.url}-${i}`} className="relative overflow-hidden rounded-xl border">
-                <img
-                  src={item.url}
-                  alt="product"
-                  className="h-24 w-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.opacity = "0.35";
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    item.type === "existing"
-                      ? removeExistingImage(item.url)
-                      : removePendingImage(item.url, item.index)
-                  }
-                  className="absolute right-1 top-1 rounded-lg bg-white/90 px-2 py-1 text-xs font-bold text-slate-900"
-                  title="Remove"
-                >
-                  ×
-                </button>
+                <Field label="Weight (kg)">
+                  <input
+                    type="number"
+                    value={weightKg}
+                    onChange={(e) =>
+                      setWeightKg(e.target.value === "" ? "" : Number(e.target.value))
+                    }
+                    className="w-full rounded-xl border px-3 py-2 text-sm"
+                  />
+                </Field>
               </div>
-            ))}
+            </div>
           </div>
 
-          {gallery.length === 0 && (
-            <div className="mt-4 rounded-xl border border-dashed p-4 text-center text-xs text-slate-500">
-              No images yet.
+          <div className="rounded-2xl border bg-white p-4 shadow-sm md:p-6">
+            <div className="text-sm font-extrabold" style={{ color: DARK_BLUE }}>
+              Images
             </div>
-          )}
+            <p className="mt-1 text-xs text-slate-500">
+              Upload from device or take a photo (phone camera).
+            </p>
+
+            <div className="mt-4 flex flex-col gap-3">
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+                <ImagePlus size={16} />
+                Upload images
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => onPickImages(e.target.files)}
+                />
+              </label>
+
+              <label
+                className="flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white"
+                style={{ backgroundColor: DARK_BLUE }}
+              >
+                <Camera size={16} />
+                Take photo
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => onPickImages(e.target.files)}
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {gallery.map((item, i) => (
+                <div
+                  key={`${item.type}-${item.url}-${i}`}
+                  className="relative overflow-hidden rounded-xl border"
+                >
+                  <img
+                    src={item.url}
+                    alt="product"
+                    className="h-24 w-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.opacity = "0.35";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      item.type === "existing"
+                        ? removeExistingImage(item.url)
+                        : removePendingImage(item.url, item.index)
+                    }
+                    className="absolute right-1 top-1 rounded-lg bg-white/90 px-2 py-1 text-xs font-bold text-slate-900"
+                    title="Remove"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {gallery.length === 0 && (
+              <div className="mt-4 rounded-xl border border-dashed p-4 text-center text-xs text-slate-500">
+                No images yet.
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </form>
+      </form>
+
+      {scannerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-extrabold text-slate-900">Scan barcode</h2>
+                <p className="text-sm text-slate-500">
+                  Point the rear camera at the barcode.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  await stopScanner();
+                  setScannerOpen(false);
+                }}
+                className="rounded-xl border px-3 py-2 text-sm font-semibold text-slate-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <div
+              id={scannerRegionId}
+              className="mt-4 overflow-hidden rounded-xl border bg-slate-100"
+            />
+
+            {scannerError && (
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {scannerError}
+              </div>
+            )}
+
+            <div className="mt-3 text-xs text-slate-500">
+              If scanning fails, just type the barcode manually.
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
