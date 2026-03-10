@@ -68,6 +68,7 @@ function mapProductRow(row: any): Product {
     name: String(row.name ?? ""),
     description: String(row.description ?? ""),
     sku: String(row.sku ?? ""),
+    barcode: String(row.barcode ?? ""),
     category: String(row.category ?? ""),
     price,
     stock: Number(row.stock ?? 0),
@@ -201,6 +202,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       name: p.name,
       description: p.description ?? "",
       sku: (p as any).sku ?? "",
+      barcode: (p as any).barcode ?? "",
       category: p.category ?? "",
       stock: (p as any).stock ?? 0,
       image_url: (p as any).image ?? (p as any).imageUrl ?? (p as any).image_url ?? null,
@@ -250,6 +252,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (patch.name !== undefined) updatePayload.name = patch.name;
     if (patch.description !== undefined) updatePayload.description = patch.description;
     if ((patch as any).sku !== undefined) updatePayload.sku = (patch as any).sku;
+    if ((patch as any).barcode !== undefined) updatePayload.barcode = (patch as any).barcode;
     if (patch.category !== undefined) updatePayload.category = patch.category;
     if ((patch as any).stock !== undefined) updatePayload.stock = (patch as any).stock;
 

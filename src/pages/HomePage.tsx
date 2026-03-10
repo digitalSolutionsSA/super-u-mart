@@ -17,6 +17,9 @@ const MARQUEE_CATEGORIES = [
   { id: 'cellphones-tablets', name: 'Cellphones & Tablets', image: '/categories/cellphones-tablets.png' },
   { id: 'bathroom-accessories', name: 'Bathroom & Accessories', image: '/categories/bathroom.png' },
   { id: 'gardening', name: 'Gardening', image: '/categories/gardening.png' },
+  { id: 'computers-peripherals', name: 'Computers & Peripherals', image: '/categories/computers-peripherals.png' },
+  { id: 'cameras-and-accessories', name: 'Cameras & Accessories', image: '/categories/cameras-and-accessories.png' },
+
 ];
 
 function isOnSale(p: any): boolean {

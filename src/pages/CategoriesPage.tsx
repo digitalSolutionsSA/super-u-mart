@@ -23,6 +23,8 @@ const PERMANENT_CATEGORIES = [
   { id: "car-accessories", name: "Car Accessories", icon: "🚗" },
   { id: "lights-solar", name: "Lights & Solar", icon: "💡" },
   { id: "cellphones-tablets", name: "Cellphones & Tablets", icon: "📱" },
+  { id: "computers-peripherals", name: "Computers & Peripherals", icon: "💻" },
+  { id: "cameras-and-accessories", name: "Cameras & Accessories", icon: "📷" },
 ] as const;
 
 type UIProduct = {

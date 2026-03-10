@@ -23,6 +23,7 @@ export default function ProductCard({ product, onView }: ProductCardProps) {
 
   const stockCount = Number(p?.stock || 0);
   const hasStock = stockCount > 0;
+  const barcodeValue = String(p?.barcode || p?.sku || "").trim();
 
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -106,7 +107,7 @@ export default function ProductCard({ product, onView }: ProductCardProps) {
         }}
       >
         <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700 }}>
-          SKU: {p?.sku || "-"}
+          Barcode: {barcodeValue || "-"}
         </div>
 
         <h3

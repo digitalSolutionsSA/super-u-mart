@@ -26,21 +26,22 @@ export default function ShopPage() {
   const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
 
   const SHOP_CATEGORY_ORDER = useMemo(
-  () => [
-    "Kitchen and Home",
-    "Tools & Hardware",
-    "Electronics & Gaming",
-    "Baby Kids & Toys",
-    "Sports & Outdoor",
-    "Car Accessories",
-    "Bathroom & Accessories",
-    "Gardening",
-    "Lights & Solar",
-    "Computers & Peripherals",
-    "Cellphones & Tablets",
-  ],
-  []
-);
+    () => [
+      "Kitchen and Home",
+      "Tools & Hardware",
+      "Electronics & Gaming",
+      "Baby Kids & Toys",
+      "Sports & Outdoor",
+      "Car Accessories",
+      "Bathroom & Accessories",
+      "Gardening",
+      "Lights & Solar",
+      "Computers & Peripherals",
+      "Cellphones & Tablets",
+      "Cameras & Accessories",
+    ],
+    []
+  );
 
   // Canonical aliases for messy stored values coming from DB/admin
   const CATEGORY_ALIASES = useMemo(
@@ -105,19 +106,27 @@ export default function ShopPage() {
         "peripherals",
       ],
       "bathroom-and-accessories": [
-  "bathroom-and-accessories",
-  "bathroom-accessories",
-  "bathroom-and-accessory",
-  "bathroom",
-  "accessories",
-  "bathroom-&-accessories",
-],
-"gardening": [
-  "gardening",
-  "garden",
-  "gardens",
-  "garden-tools",
-  "garden-supplies",
+        "bathroom-and-accessories",
+        "bathroom-accessories",
+        "bathroom-and-accessory",
+        "bathroom",
+        "accessories",
+        "bathroom-&-accessories",
+      ],
+      "gardening": [
+        "gardening",
+        "garden",
+        "gardens",
+        "garden-tools",
+        "garden-supplies",
+      ],
+      "cameras-and-accessories": [
+  "cameras-and-accessories",
+  "camera-and-accessories",
+  "cameras-accessories",
+  "camera-accessories",
+  "camera",
+  "cameras",
 ],
     }),
     []
@@ -127,15 +136,31 @@ export default function ShopPage() {
     const key = slugify(String(value ?? ""));
     if (!key) return "";
 
-    // direct canonical match
     if (CATEGORY_ALIASES[key as keyof typeof CATEGORY_ALIASES]) return key;
 
-    // alias match
     for (const [canonical, aliases] of Object.entries(CATEGORY_ALIASES)) {
       if (aliases.includes(key)) return canonical;
     }
 
     return key;
+  };
+
+  const getProductBarcode = (product: any) => {
+    const possibleValues = [
+      product?.barcode,
+      product?.barcode_number,
+      product?.barcodeNumber,
+      product?.barCode,
+      product?.ean,
+      product?.upc,
+      product?.code,
+    ];
+
+    const found = possibleValues.find(
+      (value) => value !== null && value !== undefined && String(value).trim() !== ""
+    );
+
+    return found ? String(found).trim() : "";
   };
 
   const allowedCategories = useMemo(() => {
@@ -246,8 +271,9 @@ export default function ShopPage() {
       list = list.filter((p: any) => {
         const name = String(p?.name ?? "").toLowerCase();
         const desc = String(p?.description ?? "").toLowerCase();
-        const sku = String(p?.sku ?? "").toLowerCase();
-        return name.includes(q) || desc.includes(q) || sku.includes(q);
+        const barcode = getProductBarcode(p).toLowerCase();
+
+        return name.includes(q) || desc.includes(q) || barcode.includes(q);
       });
     }
 
@@ -496,7 +522,7 @@ export default function ShopPage() {
                 setSearchQuery(next);
                 updateSearchParams(categoryKey, next);
               }}
-              placeholder="Search products by name, SKU, or description..."
+              placeholder="Search products by name, barcode, or description..."
               style={{
                 width: "100%",
                 padding: "12px 16px",
@@ -534,15 +560,22 @@ export default function ShopPage() {
                 alignItems: "stretch",
               }}
             >
-              {filtered.map((product: any, index: number) =>
-                product ? (
+              {filtered.map((product: any, index: number) => {
+                if (!product) return null;
+
+                const barcode = getProductBarcode(product);
+
+                return (
                   <ProductCard
-                    key={product.id ?? product.sku ?? index}
-                    product={product}
+                    key={product.id ?? barcode ?? index}
+                    product={{
+                      ...product,
+                      sku: barcode || "",
+                    }}
                     onView={setSelectedProduct}
                   />
-                ) : null
-              )}
+                );
+              })}
             </div>
           )}
         </main>

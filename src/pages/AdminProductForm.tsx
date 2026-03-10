@@ -18,7 +18,9 @@ const PERMANENT_CATEGORIES = [
   { id: "car-accessories", name: "Car Accessories" },
   { id: "lights-solar", name: "Lights & Solar" },
   { id: "bathroom-accessories", name: "Bathroom & Accessories" },
-  { id: "gardening", name: "Gardening" }
+  { id: "gardening", name: "Gardening" },
+  { id: "computers-peripherals", name: "Computers & Peripherals" },
+  { id: "cameras-accessories", name: "Cameras & Accessories" },
 ] as const;
 
 type CategoryId = (typeof PERMANENT_CATEGORIES)[number]["id"];
