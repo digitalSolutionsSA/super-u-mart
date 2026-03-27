@@ -4,6 +4,19 @@ import { defaultCategories } from "../data/seedData";
 import { v4 as uuidv4 } from "uuid";
 import { supabase } from "../lib/supabase";
 
+function calculateCourierFee(totalWeightKg: number) {
+  if (totalWeightKg <= 0) return 0;
+  if (totalWeightKg <= 2) return 120;
+  if (totalWeightKg <= 5) return 155;
+  if (totalWeightKg <= 10) return 165;
+  if (totalWeightKg <= 15) return 200;
+  if (totalWeightKg <= 20) return 285;
+
+  // Fallback for weights above 20kg
+  const extraKg = Math.ceil(totalWeightKg - 20);
+  return 285 + extraKg * 15;
+}
+
 interface StoreContextType {
   // Products
   products: Product[];
@@ -25,6 +38,9 @@ interface StoreContextType {
   clearCart: () => void;
   cartTotal: number;
   cartCount: number;
+  cartWeight: number;
+  getDeliveryFee: (deliveryMethod: Order["deliveryMethod"]) => number;
+  getOrderTotal: (deliveryMethod: Order["deliveryMethod"]) => number;
 
   // Orders
   orders: Order[];
@@ -395,7 +411,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => cart.reduce((sum, i) => sum + (Number(i.product.price) || 0) * i.quantity, 0),
     [cart]
   );
+
   const cartCount = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
+
+  const cartWeight = useMemo(
+    () =>
+      cart.reduce(
+        (sum, i) => sum + (Number((i.product as any).weightKg) || 0) * i.quantity,
+        0
+      ),
+    [cart]
+  );
+
+  const getDeliveryFee = (deliveryMethod: Order["deliveryMethod"]) => {
+    if (deliveryMethod === "collection") return 0;
+    return calculateCourierFee(cartWeight);
+  };
+
+  const getOrderTotal = (deliveryMethod: Order["deliveryMethod"]) => {
+    return cartTotal + getDeliveryFee(deliveryMethod);
+  };
 
   const placeOrder = (
     customer: Order["customer"],
@@ -404,7 +439,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const order: Order = {
       id: `ORD-${Date.now()}`,
       items: [...cart],
-      total: cartTotal,
+      total: getOrderTotal(deliveryMethod),
       status: "pending",
       customer,
       createdAt: new Date().toISOString(),
@@ -439,6 +474,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         clearCart,
         cartTotal,
         cartCount,
+        cartWeight,
+        getDeliveryFee,
+        getOrderTotal,
 
         orders,
         placeOrder,

@@ -111,7 +111,7 @@ ${message}`
                 </p>
 
                 <p>
-                  <strong>Email:</strong> superumart.web@gmail.com
+                  <strong>Email:</strong> superumartwebsite@gmail.com
                 </p>
 
                 <p>
