@@ -1,12 +1,15 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 const DARK_BLUE = "#111d5e";
 const ACCENT_ORANGE = "#f97316";
+const BRAND_SLUG = "superumart";
 
 type OrderStatus = "Paid" | "Pending" | "Cancelled" | "Shipped";
 
 type Order = {
   id: string;
+  orderNumber: string;
   customer: string;
   phone: string;
   items: number;
@@ -15,18 +18,72 @@ type Order = {
   createdAt: string;
 };
 
+function formatMoney(amount: number) {
+  return `R ${amount.toFixed(2)}`;
+}
+
+function formatOrderDate(dateString: string) {
+  if (!dateString) return "N/A";
+
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return "N/A";
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+}
+
+function normalizeStatus(status: string | null | undefined, paymentStatus?: string | null): OrderStatus {
+  const s = String(status || "").trim().toLowerCase();
+  const p = String(paymentStatus || "").trim().toLowerCase();
+
+  if (s === "cancelled" || s === "canceled" || p === "failed" || p === "cancelled") {
+    return "Cancelled";
+  }
+
+  if (s === "shipped" || s === "fulfilled" || s === "delivered") {
+    return "Shipped";
+  }
+
+  if (s === "paid" || p === "paid" || p === "completed" || p === "successful") {
+    return "Paid";
+  }
+
+  return "Pending";
+}
+
 function StatusPill({ status }: { status: OrderStatus }) {
   const style = (() => {
     switch (status) {
       case "Paid":
-        return { bg: "rgba(34,197,94,0.14)", border: "rgba(34,197,94,0.35)", text: "rgb(22,163,74)" };
+        return {
+          bg: "rgba(34,197,94,0.14)",
+          border: "rgba(34,197,94,0.35)",
+          text: "rgb(22,163,74)",
+        };
       case "Pending":
-        return { bg: "rgba(249,115,22,0.14)", border: "rgba(249,115,22,0.35)", text: "rgb(234,88,12)" };
+        return {
+          bg: "rgba(249,115,22,0.14)",
+          border: "rgba(249,115,22,0.35)",
+          text: "rgb(234,88,12)",
+        };
       case "Shipped":
-        return { bg: "rgba(59,130,246,0.14)", border: "rgba(59,130,246,0.35)", text: "rgb(37,99,235)" };
+        return {
+          bg: "rgba(59,130,246,0.14)",
+          border: "rgba(59,130,246,0.35)",
+          text: "rgb(37,99,235)",
+        };
       case "Cancelled":
       default:
-        return { bg: "rgba(239,68,68,0.14)", border: "rgba(239,68,68,0.35)", text: "rgb(220,38,38)" };
+        return {
+          bg: "rgba(239,68,68,0.14)",
+          border: "rgba(239,68,68,0.35)",
+          text: "rgb(220,38,38)",
+        };
     }
   })();
 
@@ -46,24 +103,127 @@ function StatusPill({ status }: { status: OrderStatus }) {
 
 export default function AdminOrders() {
   const [query, setQuery] = useState("");
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const orders: Order[] = useMemo(
-    () => [
-      { id: "UM-10021", customer: "M. van Rooyen", phone: "063 903 4514", items: 6, total: 1299.5, status: "Paid", createdAt: "2026-02-27 08:41" },
-      { id: "UM-10022", customer: "K. Mokoena", phone: "071 222 9011", items: 3, total: 489.0, status: "Pending", createdAt: "2026-02-27 09:03" },
-      { id: "UM-10023", customer: "S. Naidoo", phone: "082 555 1109", items: 12, total: 2440.0, status: "Shipped", createdAt: "2026-02-26 16:18" },
-      { id: "UM-10024", customer: "J. Botha", phone: "083 991 7788", items: 2, total: 219.99, status: "Cancelled", createdAt: "2026-02-26 11:02" },
-      { id: "UM-10025", customer: "A. Petersen", phone: "060 111 7731", items: 9, total: 1789.25, status: "Paid", createdAt: "2026-02-25 14:27" },
-      { id: "UM-10026", customer: "N. Dlamini", phone: "078 090 1212", items: 4, total: 699.0, status: "Pending", createdAt: "2026-02-25 10:09" },
-    ],
-    []
-  );
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadOrders() {
+      try {
+        if (mounted) {
+          setLoading(true);
+          setError("");
+        }
+
+        const { data: brand, error: brandError } = await supabase
+          .from("brands")
+          .select("id, slug")
+          .eq("slug", BRAND_SLUG)
+          .single();
+
+        if (brandError || !brand?.id) {
+          throw new Error("Could not find Super U Mart brand.");
+        }
+
+        const { data: ordersData, error: ordersError } = await supabase
+          .from("orders")
+          .select(
+            "id, order_number, customer_name, customer_phone, status, payment_status, amount_cents, created_at, brand_id"
+          )
+          .eq("brand_id", brand.id)
+          .order("created_at", { ascending: false });
+
+        if (ordersError) {
+          throw ordersError;
+        }
+
+        const safeOrders = Array.isArray(ordersData) ? ordersData : [];
+        const orderIds = safeOrders.map((order: any) => order.id).filter(Boolean);
+
+        let itemCountMap: Record<string, number> = {};
+
+        if (orderIds.length > 0) {
+          const { data: itemsData, error: itemsError } = await supabase
+            .from("order_items")
+            .select("order_id, qty")
+            .in("order_id", orderIds);
+
+          if (itemsError) {
+            throw itemsError;
+          }
+
+          itemCountMap = (itemsData || []).reduce((acc: Record<string, number>, item: any) => {
+            const orderId = String(item.order_id || "");
+            const qty = Number(item.qty || 0);
+
+            if (!orderId) return acc;
+            acc[orderId] = (acc[orderId] || 0) + qty;
+            return acc;
+          }, {});
+        }
+
+        const mapped: Order[] = safeOrders.map((order: any) => ({
+          id: String(order.id),
+          orderNumber: order.order_number?.trim() || String(order.id).slice(0, 8).toUpperCase(),
+          customer: order.customer_name?.trim() || "Unknown customer",
+          phone: order.customer_phone?.trim() || "-",
+          items: itemCountMap[String(order.id)] || 0,
+          total: Number(order.amount_cents || 0) / 100,
+          status: normalizeStatus(order.status, order.payment_status),
+          createdAt: formatOrderDate(order.created_at),
+        }));
+
+        if (mounted) {
+          setOrders(mapped);
+        }
+      } catch (err: any) {
+        console.error("Failed to load admin orders:", err);
+        if (mounted) {
+          setOrders([]);
+          setError(err?.message || "Failed to load orders.");
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadOrders();
+
+    const channel = supabase
+      .channel("admin-orders-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => {
+          loadOrders();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "order_items" },
+        () => {
+          loadOrders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return orders;
+
     return orders.filter((o) =>
-      [o.id, o.customer, o.phone, o.status].some((v) => v.toLowerCase().includes(q))
+      [o.orderNumber, o.customer, o.phone, o.status, o.createdAt]
+        .some((value) => String(value).toLowerCase().includes(q))
     );
   }, [orders, query]);
 
@@ -71,14 +231,13 @@ export default function AdminOrders() {
 
   return (
     <div>
-      {/* Page header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="text-3xl font-extrabold" style={{ color: "white" }}>
             Orders
           </div>
           <div className="mt-1 text-sm font-semibold text-white/80">
-            Dummy data for now. Real orders can come later when humans invent Supabase.
+            Live orders for Super U Mart from Supabase.
           </div>
         </div>
 
@@ -93,6 +252,7 @@ export default function AdminOrders() {
           >
             {filtered.length} orders
           </div>
+
           <div
             className="rounded-xl px-4 py-2 text-sm font-extrabold"
             style={{
@@ -101,12 +261,11 @@ export default function AdminOrders() {
               color: "white",
             }}
           >
-            R {totalValue.toFixed(2)}
+            {formatMoney(totalValue)}
           </div>
         </div>
       </div>
 
-      {/* Search */}
       <div className="mt-5">
         <input
           value={query}
@@ -122,7 +281,19 @@ export default function AdminOrders() {
         />
       </div>
 
-      {/* Table */}
+      {error && (
+        <div
+          className="mt-4 rounded-2xl px-4 py-3 font-semibold"
+          style={{
+            background: "rgba(239,68,68,0.16)",
+            border: "1px solid rgba(239,68,68,0.35)",
+            color: "white",
+          }}
+        >
+          {error}
+        </div>
+      )}
+
       <div
         className="mt-6 overflow-hidden rounded-2xl border border-white/15"
         style={{
@@ -145,35 +316,40 @@ export default function AdminOrders() {
             </thead>
 
             <tbody>
-              {filtered.map((o) => (
-                <tr key={o.id} className="border-t border-white/10 text-white">
-                  <td className="px-5 py-4 font-extrabold">{o.id}</td>
-                  <td className="px-5 py-4 font-semibold">{o.customer}</td>
-                  <td className="px-5 py-4 font-semibold">{o.phone}</td>
-                  <td className="px-5 py-4 font-extrabold">{o.items}</td>
-                  <td className="px-5 py-4 font-extrabold">R {o.total.toFixed(2)}</td>
-                  <td className="px-5 py-4">
-                    <StatusPill status={o.status} />
-                  </td>
-                  <td className="px-5 py-4 font-semibold text-white/80">{o.createdAt}</td>
-                </tr>
-              ))}
-
-              {filtered.length === 0 && (
+              {loading ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-10 text-center text-white/80 font-semibold">
-                    No matching orders found.
+                    Loading orders...
                   </td>
                 </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-10 text-center text-white/80 font-semibold">
+                    No orders found yet.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((o) => (
+                  <tr key={o.id} className="border-t border-white/10 text-white">
+                    <td className="px-5 py-4 font-extrabold">{o.orderNumber}</td>
+                    <td className="px-5 py-4 font-semibold">{o.customer}</td>
+                    <td className="px-5 py-4 font-semibold">{o.phone}</td>
+                    <td className="px-5 py-4 font-extrabold">{o.items}</td>
+                    <td className="px-5 py-4 font-extrabold">{formatMoney(o.total)}</td>
+                    <td className="px-5 py-4">
+                      <StatusPill status={o.status} />
+                    </td>
+                    <td className="px-5 py-4 font-semibold text-white/80">{o.createdAt}</td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Footer actions */}
         <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-4 border-t border-white/10">
           <div className="text-sm font-semibold text-white/75">
-            Tip: when Supabase is connected, this becomes real-time.
+            Synced to Supabase for Super U Mart only.
           </div>
 
           <button
