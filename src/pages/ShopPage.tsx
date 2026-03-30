@@ -43,7 +43,6 @@ export default function ShopPage() {
     []
   );
 
-  // Canonical aliases for messy stored values coming from DB/admin
   const CATEGORY_ALIASES = useMemo(
     () => ({
       "kitchen-and-home": [
@@ -179,6 +178,14 @@ export default function ShopPage() {
     );
 
     return found ? String(found).trim() : "";
+  };
+
+  const isCollectionOnlyProduct = (product: any) => {
+    return Boolean(
+      product?.collectionOnly === true ||
+        product?.collection_only === true ||
+        product?.collectiononly === true
+    );
   };
 
   const allowedCategories = useMemo(() => {
@@ -324,7 +331,12 @@ export default function ShopPage() {
         minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
-        background: "#f8fafc",
+        backgroundImage:
+          "linear-gradient(rgba(17, 29, 94, 0.82), rgba(17, 29, 94, 0.82)), url('/categories/warehouse-bg.png')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+        backgroundAttachment: "fixed",
         fontFamily: "Barlow, sans-serif",
       }}
     >
@@ -499,13 +511,13 @@ export default function ShopPage() {
                   fontFamily: "Barlow Condensed, sans-serif",
                   fontWeight: 800,
                   fontSize: 28,
-                  color: "#1e293b",
+                  color: "#ffffff",
                 }}
               >
                 {activeCategoryName}
               </h1>
 
-              <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>
+              <p style={{ margin: "4px 0 0", color: "#e2e8f0", fontSize: 13 }}>
                 {filtered.length} products found
               </p>
             </div>
@@ -522,6 +534,7 @@ export default function ShopPage() {
                 color: "#475569",
                 cursor: "pointer",
                 minWidth: 150,
+                background: "#ffffff",
               }}
             >
               <option value="default">Sort: Default</option>
@@ -551,6 +564,7 @@ export default function ShopPage() {
                 outline: "none",
                 boxSizing: "border-box",
                 transition: "border-color 0.2s",
+                background: "#ffffff",
               }}
               onFocus={(e) => {
                 (e.target as HTMLInputElement).style.borderColor = "#f97316";
@@ -562,9 +576,9 @@ export default function ShopPage() {
           </div>
 
           {filtered.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "80px 0", color: "#94a3b8" }}>
+            <div style={{ textAlign: "center", padding: "80px 0", color: "#e2e8f0" }}>
               <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
-              <h3 style={{ fontFamily: "Barlow, sans-serif", color: "#475569" }}>
+              <h3 style={{ fontFamily: "Barlow, sans-serif", color: "#ffffff" }}>
                 No products found
               </h3>
               <p>Try changing your filters or search query.</p>
@@ -582,6 +596,7 @@ export default function ShopPage() {
                 if (!product) return null;
 
                 const barcode = getProductBarcode(product);
+                const collectionOnly = isCollectionOnlyProduct(product);
 
                 return (
                   <ProductCard
@@ -589,6 +604,7 @@ export default function ShopPage() {
                     product={{
                       ...product,
                       sku: barcode || "",
+                      collectionOnly,
                     }}
                     onView={setSelectedProduct}
                   />
@@ -603,7 +619,10 @@ export default function ShopPage() {
 
       {selectedProduct && (
         <ProductModal
-          product={selectedProduct}
+          product={{
+            ...selectedProduct,
+            collectionOnly: isCollectionOnlyProduct(selectedProduct),
+          }}
           onClose={() => setSelectedProduct(null)}
         />
       )}

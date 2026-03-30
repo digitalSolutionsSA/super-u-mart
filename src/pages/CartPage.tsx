@@ -132,6 +132,7 @@ export default function CartPage() {
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('courier');
   const [form, setForm] = useState<CheckoutForm>(initialForm);
   const [placing, setPlacing] = useState(false);
+  const [accepted, setAccepted] = useState(false);
 
   const deliveryFee = getDeliveryFee(deliveryMethod);
   const orderTotal = getOrderTotal(deliveryMethod);
@@ -144,6 +145,11 @@ export default function CartPage() {
     e.preventDefault();
 
     if (placing) return;
+
+    if (!accepted) {
+      alert('You must accept the terms and disclaimer before placing an order.');
+      return;
+    }
 
     if (!cart.length) {
       alert('Your cart is empty.');
@@ -969,6 +975,41 @@ export default function CartPage() {
                   <span>R{orderTotal.toFixed(2)}</span>
                 </div>
               </div>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  marginTop: 8,
+                  marginBottom: 14,
+                  fontSize: 13,
+                  color: '#334155',
+                  lineHeight: 1.5,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={accepted}
+                  onChange={e => setAccepted(e.target.checked)}
+                  style={{ marginTop: 3, accentColor: '#f97316' }}
+                />
+                <span>
+                  I agree to the{' '}
+                  <Link
+                    to="/disclaimer"
+                    style={{
+                      color: '#f97316',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    terms and disclaimer
+                  </Link>
+                  .
+                </span>
+              </label>
 
               <button
                 type="submit"

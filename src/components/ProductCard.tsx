@@ -24,6 +24,11 @@ export default function ProductCard({ product, onView }: ProductCardProps) {
   const stockCount = Number(p?.stock || 0);
   const hasStock = stockCount > 0;
   const barcodeValue = String(p?.barcode || p?.sku || "").trim();
+  const collectionOnly = Boolean(
+    p?.collectionOnly === true ||
+      p?.collection_only === true ||
+      p?.collectiononly === true
+  );
 
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -55,7 +60,6 @@ export default function ProductCard({ product, onView }: ProductCardProps) {
         e.currentTarget.style.boxShadow = "0 6px 18px rgba(15, 23, 42, 0.08)";
       }}
     >
-      {/* Image area */}
       <div
         style={{
           background: "#f8fafc",
@@ -96,7 +100,6 @@ export default function ProductCard({ product, onView }: ProductCardProps) {
         </div>
       </div>
 
-      {/* Content */}
       <div
         style={{
           padding: 14,
@@ -109,6 +112,28 @@ export default function ProductCard({ product, onView }: ProductCardProps) {
         <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700 }}>
           Barcode: {barcodeValue || "-"}
         </div>
+
+        {collectionOnly && (
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              alignSelf: "flex-start",
+              padding: "4px 10px",
+              borderRadius: 999,
+              background: "#fff7ed",
+              border: "1px solid #fdba74",
+              color: "#ea580c",
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+              lineHeight: 1.2,
+            }}
+          >
+            Collection Only
+          </div>
+        )}
 
         <h3
           style={{
@@ -201,7 +226,7 @@ export default function ProductCard({ product, onView }: ProductCardProps) {
               }}
             >
               <ShoppingCart size={15} />
-              Add
+              {collectionOnly ? "Collect" : "Add"}
             </button>
           </div>
         </div>

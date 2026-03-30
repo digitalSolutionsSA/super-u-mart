@@ -68,6 +68,14 @@ function loadLS<T>(key: string, fallback: T): T {
   }
 }
 
+function isCollectionOnlyProduct(product: any): boolean {
+  return Boolean(
+    product?.collectionOnly === true ||
+      product?.collection_only === true ||
+      product?.collectiononly === true
+  );
+}
+
 /**
  * ✅ Map Supabase product rows to your app Product type.
  */
@@ -92,6 +100,9 @@ function mapProductRow(row: any): Product {
     images: row.images ?? null,
     featured: Boolean(row.featured ?? row.is_featured ?? false),
     onSale: Boolean(row.onSale ?? row.on_sale ?? false),
+    collectionOnly: Boolean(
+      row.collectionOnly ?? row.collection_only ?? row.collectiononly ?? false
+    ),
     salePrice:
       typeof row.sale_price === "number"
         ? row.sale_price
@@ -225,6 +236,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       images: (p as any).images ?? null,
       featured: (p as any).featured ?? false,
       on_sale: (p as any).onSale ?? false,
+      collection_only: isCollectionOnlyProduct(p),
       sale_price:
         (p as any).salePrice !== undefined && (p as any).salePrice !== ""
           ? Number((p as any).salePrice)
@@ -281,6 +293,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if ((patch as any).featured !== undefined) updatePayload.featured = (patch as any).featured;
     if ((patch as any).onSale !== undefined) updatePayload.on_sale = (patch as any).onSale;
     if ((patch as any).on_sale !== undefined) updatePayload.on_sale = (patch as any).on_sale;
+
+    if (
+      (patch as any).collectionOnly !== undefined ||
+      (patch as any).collection_only !== undefined ||
+      (patch as any).collectiononly !== undefined
+    ) {
+      updatePayload.collection_only = isCollectionOnlyProduct(patch);
+    }
 
     if ((patch as any).salePrice !== undefined) {
       updatePayload.sale_price =
@@ -423,8 +443,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [cart]
   );
 
+  const cartHasCollectionOnly = useMemo(
+    () => cart.some((item) => isCollectionOnlyProduct(item.product)),
+    [cart]
+  );
+
   const getDeliveryFee = (deliveryMethod: Order["deliveryMethod"]) => {
     if (deliveryMethod === "collection") return 0;
+    if (cartHasCollectionOnly) return 0;
     return calculateCourierFee(cartWeight);
   };
 
@@ -436,14 +462,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     customer: Order["customer"],
     deliveryMethod: Order["deliveryMethod"]
   ): Order => {
+    const finalDeliveryMethod =
+      cartHasCollectionOnly && deliveryMethod === "courier"
+        ? "collection"
+        : deliveryMethod;
+
     const order: Order = {
       id: `ORD-${Date.now()}`,
       items: [...cart],
-      total: getOrderTotal(deliveryMethod),
+      total: getOrderTotal(finalDeliveryMethod),
       status: "pending",
       customer,
       createdAt: new Date().toISOString(),
-      deliveryMethod,
+      deliveryMethod: finalDeliveryMethod,
     };
     setOrders((prev) => [order, ...prev]);
     clearCart();

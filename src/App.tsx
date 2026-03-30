@@ -8,6 +8,7 @@ import CartPage from "./pages/CartPage";
 import OrderSuccessPage from "./pages/OrderSuccessPage";
 import ContactPage from "./pages/ContactPage";
 import AboutPage from "./pages/AboutPage";
+import Disclaimer from "./pages/Disclaimer";
 
 import WholesaleAuth from "./pages/WholesaleAuth";
 
@@ -34,6 +35,7 @@ export default function App() {
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/deals" element={<DealsPage />} />
+      <Route path="/disclaimer" element={<Disclaimer />} />
 
       {/* Wholesale auth */}
       <Route path="/wholesale-auth" element={<WholesaleAuth />} />

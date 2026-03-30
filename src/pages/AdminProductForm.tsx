@@ -121,6 +121,7 @@ export default function AdminProductForm() {
 
   const [onSale, setOnSale] = useState<boolean>(false);
   const [salePrice, setSalePrice] = useState<number | "">("");
+  const [collectionOnly, setCollectionOnly] = useState<boolean>(false);
 
   const [lengthCm, setLengthCm] = useState<number | "">("");
   const [widthCm, setWidthCm] = useState<number | "">("");
@@ -149,6 +150,7 @@ export default function AdminProductForm() {
         setBarcode("");
         setOnSale(false);
         setSalePrice("");
+        setCollectionOnly(false);
         setLengthCm("");
         setWidthCm("");
         setHeightCm("");
@@ -168,6 +170,7 @@ export default function AdminProductForm() {
     setBarcode(existing?.barcode ?? "");
     setOnSale(!!existing?.onSale);
     setSalePrice(existing?.salePrice ?? "");
+    setCollectionOnly(!!existing?.collectionOnly);
     setLengthCm(existing?.lengthCm ?? "");
     setWidthCm(existing?.widthCm ?? "");
     setHeightCm(existing?.heightCm ?? "");
@@ -320,6 +323,7 @@ export default function AdminProductForm() {
 
         onSale,
         salePrice: onSale && salePrice !== "" ? Number(salePrice) : undefined,
+        collectionOnly,
 
         lengthCm: lengthCm === "" ? undefined : Number(lengthCm),
         widthCm: widthCm === "" ? undefined : Number(widthCm),
@@ -461,7 +465,7 @@ export default function AdminProductForm() {
               </Field>
 
               <Field label="Sale">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-3">
                   <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
                     <input
                       type="checkbox"
@@ -469,6 +473,15 @@ export default function AdminProductForm() {
                       onChange={(e) => setOnSale(e.target.checked)}
                     />
                     On Sale (shows on Home featured)
+                  </label>
+
+                  <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={collectionOnly}
+                      onChange={(e) => setCollectionOnly(e.target.checked)}
+                    />
+                    Collection Only
                   </label>
                 </div>
 
