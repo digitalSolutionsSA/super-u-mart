@@ -19,7 +19,6 @@ const MARQUEE_CATEGORIES = [
   { id: 'gardening', name: 'Gardening', image: '/categories/gardening.png' },
   { id: 'computers-peripherals', name: 'Computers & Peripherals', image: '/categories/computers-peripherals.png' },
   { id: 'cameras-and-accessories', name: 'Cameras & Accessories', image: '/categories/cameras-and-accessories.png' },
-
 ];
 
 function isOnSale(p: any): boolean {
@@ -137,6 +136,19 @@ function clampText(text: string, max = 120): string {
 export default function HomePage() {
   const { products } = useStore();
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  const [screenWidth, setScreenWidth] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1280
+  );
+
+  useEffect(() => {
+    const onResize = () => setScreenWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const isMobile = screenWidth <= 768;
+  const isTablet = screenWidth > 768 && screenWidth <= 1024;
 
   const saleItems = useMemo(() => {
     const sale = products.filter((p: any) => isOnSale(p));
@@ -280,7 +292,7 @@ export default function HomePage() {
           background: 'linear-gradient(135deg, #1a2e7a 0%, #111d5e 60%, #1a2e7a 100%)',
           position: 'relative',
           overflow: 'hidden',
-          minHeight: 560,
+          minHeight: isMobile ? 'auto' : 560,
           display: 'flex',
           alignItems: 'center',
         }}
@@ -300,11 +312,11 @@ export default function HomePage() {
           style={{
             maxWidth: 1200,
             margin: '0 auto',
-            padding: '60px 24px',
+            padding: isMobile ? '32px 16px' : isTablet ? '48px 20px' : '60px 24px',
             width: '100%',
             display: 'grid',
-            gridTemplateColumns: '1fr 1.05fr',
-            gap: 40,
+            gridTemplateColumns: isMobile || isTablet ? '1fr' : '1fr 1.05fr',
+            gap: isMobile ? 24 : 40,
             alignItems: 'center',
             position: 'relative',
             zIndex: 1,
@@ -319,12 +331,12 @@ export default function HomePage() {
                 background: 'rgba(34,197,94,0.15)',
                 border: '1px solid rgba(34,197,94,0.4)',
                 borderRadius: 20,
-                padding: '6px 14px',
+                padding: isMobile ? '6px 12px' : '6px 14px',
                 marginBottom: 20,
               }}
             >
               <span style={{ width: 8, height: 8, background: '#22c55e', borderRadius: '50%' }} />
-              <span style={{ color: '#86efac', fontSize: 13, fontWeight: 600 }}>
+              <span style={{ color: '#86efac', fontSize: isMobile ? 12 : 13, fontWeight: 600 }}>
                 Wholesale stock available now
               </span>
             </div>
@@ -334,9 +346,10 @@ export default function HomePage() {
                 color: 'white',
                 fontFamily: 'Barlow Condensed, Barlow, sans-serif',
                 fontWeight: 900,
-                fontSize: 52,
-                lineHeight: 1.05,
-                margin: '0 0 20px',
+                fontSize: isMobile ? 34 : isTablet ? 42 : 52,
+                lineHeight: isMobile ? 1 : 1.05,
+                margin: '0 0 18px',
+                maxWidth: isMobile ? '100%' : 560,
               }}
             >
               Simple wholesale ordering for everyday essentials.
@@ -345,27 +358,38 @@ export default function HomePage() {
             <p
               style={{
                 color: '#cbd5e1',
-                fontSize: 16,
+                fontSize: isMobile ? 15 : 16,
                 lineHeight: 1.7,
-                margin: '0 0 32px',
+                margin: '0 0 28px',
                 maxWidth: 560,
               }}
             >
               Browse categories, add to cart, choose courier, pay securely.
             </p>
 
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: 12,
+                flexWrap: 'wrap',
+                flexDirection: isMobile ? 'column' : 'row',
+                alignItems: isMobile ? 'stretch' : 'center',
+              }}
+            >
               <Link
                 to="/shop"
                 style={{
                   background: '#f97316',
                   color: 'white',
                   textDecoration: 'none',
-                  padding: '14px 32px',
+                  padding: isMobile ? '14px 20px' : '14px 32px',
                   borderRadius: 10,
                   fontWeight: 800,
                   fontFamily: 'Barlow Condensed, sans-serif',
                   boxShadow: '0 14px 28px rgba(249,115,22,0.25)',
+                  textAlign: 'center',
+                  width: isMobile ? '100%' : 'auto',
+                  boxSizing: 'border-box',
                 }}
               >
                 Start shopping
@@ -376,10 +400,13 @@ export default function HomePage() {
                 style={{
                   background: 'rgba(255,255,255,0.1)',
                   color: 'white',
-                  padding: '14px 32px',
+                  padding: isMobile ? '14px 20px' : '14px 32px',
                   borderRadius: 10,
                   border: '2px solid rgba(255,255,255,0.25)',
                   textDecoration: 'none',
+                  textAlign: 'center',
+                  width: isMobile ? '100%' : 'auto',
+                  boxSizing: 'border-box',
                 }}
               >
                 Create wholesale account
@@ -391,24 +418,26 @@ export default function HomePage() {
             onMouseEnter={() => setPaused(true)}
             onMouseLeave={() => setPaused(false)}
             style={{
-              borderRadius: 24,
-              padding: 18,
+              borderRadius: isMobile ? 18 : 24,
+              padding: isMobile ? 12 : 18,
               background: 'rgba(255,255,255,0.93)',
               border: '1px solid rgba(226,232,240,0.95)',
               boxShadow: '0 26px 70px rgba(0,0,0,0.42)',
               backdropFilter: 'blur(10px)',
+              minWidth: 0,
             }}
           >
             <div
               style={{
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: isMobile ? 'flex-start' : 'center',
                 justifyContent: 'space-between',
                 gap: 12,
                 marginBottom: 14,
+                flexWrap: 'wrap',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
                 <h3 style={{ margin: 0, fontWeight: 900, color: '#0f172a', letterSpacing: -0.2 }}>
                   Featured deals
                 </h3>
@@ -472,9 +501,9 @@ export default function HomePage() {
                       title="View product"
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '170px 1fr',
+                        gridTemplateColumns: isMobile ? '1fr' : '170px 1fr',
                         gap: 16,
-                        padding: 16,
+                        padding: isMobile ? 12 : 16,
                         borderRadius: 20,
                         border: '1px solid #e2e8f0',
                         background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
@@ -484,37 +513,47 @@ export default function HomePage() {
                       }}
                     >
                       <div
-  style={{
-    width: '100%',
-    aspectRatio: '1 / 1',
-    borderRadius: 18,
-    overflow: 'hidden',
-    border: '1px solid #e2e8f0',
-    background: 'linear-gradient(135deg, #ffffff, #f8fafc)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 14,
-  }}
->
-  {img ? (
-    <img
-      src={img}
-      alt={heroMain.name}
-      loading="lazy"
-      style={{
-        width: '100%',
-        height: '100%',
-        objectFit: 'contain',
-        display: 'block',
-      }}
-    />
-  ) : (
-    <span style={{ fontSize: 12, fontWeight: 900, color: '#64748b' }}>No image</span>
-  )}
-</div>
+                        style={{
+                          width: '100%',
+                          maxWidth: isMobile ? '100%' : 170,
+                          margin: isMobile ? '0 auto' : '0',
+                          aspectRatio: '1 / 1',
+                          borderRadius: 18,
+                          overflow: 'hidden',
+                          border: '1px solid #e2e8f0',
+                          background: 'linear-gradient(135deg, #ffffff, #f8fafc)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: 14,
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        {img ? (
+                          <img
+                            src={img}
+                            alt={heroMain.name}
+                            loading="lazy"
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'contain',
+                              display: 'block',
+                            }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: 12, fontWeight: 900, color: '#64748b' }}>No image</span>
+                        )}
+                      </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          minWidth: 0,
+                        }}
+                      >
                         <div>
                           <div
                             style={{
@@ -558,7 +597,7 @@ export default function HomePage() {
                           <div
                             style={{
                               fontWeight: 900,
-                              fontSize: 20,
+                              fontSize: isMobile ? 18 : 20,
                               lineHeight: 1.15,
                               color: '#0f172a',
                               marginBottom: 10,
@@ -577,8 +616,8 @@ export default function HomePage() {
                           >
                             {clampText(
                               heroMain.description ||
-                                'Bulk-friendly pricing on everyday products your customers actually want. Miracles do happen, apparently.',
-                              130
+                                'Bulk-friendly pricing on everyday products your customers actually want.',
+                              isMobile ? 95 : 130
                             )}
                           </p>
                         </div>
@@ -587,16 +626,17 @@ export default function HomePage() {
                           style={{
                             marginTop: 16,
                             display: 'flex',
-                            alignItems: 'center',
+                            alignItems: isMobile ? 'stretch' : 'center',
                             justifyContent: 'space-between',
                             gap: 12,
                             flexWrap: 'wrap',
+                            flexDirection: isMobile ? 'column' : 'row',
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
                             <div
                               style={{
-                                fontSize: 28,
+                                fontSize: isMobile ? 24 : 28,
                                 lineHeight: 1,
                                 fontWeight: 900,
                                 color: '#0f172a',
@@ -635,6 +675,7 @@ export default function HomePage() {
                               cursor: 'pointer',
                               whiteSpace: 'nowrap',
                               boxShadow: '0 14px 28px rgba(249,115,22,0.22)',
+                              width: isMobile ? '100%' : 'auto',
                             }}
                           >
                             View product
@@ -661,7 +702,7 @@ export default function HomePage() {
                           title="View product"
                           style={{
                             display: 'grid',
-                            gridTemplateColumns: '64px 1fr auto',
+                            gridTemplateColumns: isMobile ? '56px 1fr' : '64px 1fr auto',
                             gap: 12,
                             alignItems: 'center',
                             padding: 12,
@@ -674,8 +715,8 @@ export default function HomePage() {
                         >
                           <div
                             style={{
-                              width: 64,
-                              height: 64,
+                              width: isMobile ? 56 : 64,
+                              height: isMobile ? 56 : 64,
                               borderRadius: 12,
                               border: '1px solid #e2e8f0',
                               overflow: 'hidden',
@@ -755,25 +796,27 @@ export default function HomePage() {
                             </div>
                           </div>
 
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedProduct(p);
-                            }}
-                            style={{
-                              background: '#fff7ed',
-                              color: '#ea580c',
-                              border: '1px solid #fdba74',
-                              borderRadius: 10,
-                              padding: '10px 12px',
-                              fontWeight: 900,
-                              fontSize: 12,
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            View
-                          </button>
+                          {!isMobile && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedProduct(p);
+                              }}
+                              style={{
+                                background: '#fff7ed',
+                                color: '#ea580c',
+                                border: '1px solid #fdba74',
+                                borderRadius: 10,
+                                padding: '10px 12px',
+                                fontWeight: 900,
+                                fontSize: 12,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              View
+                            </button>
+                          )}
                         </div>
                       );
                     })}
@@ -781,7 +824,7 @@ export default function HomePage() {
                 )}
 
                 {saleItems.length > 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
                     {saleItems.slice(0, 10).map((_, i) => (
                       <button
                         key={i}
@@ -823,7 +866,7 @@ export default function HomePage() {
                   fontWeight: 700,
                 }}
               >
-                No sale or featured items found. Your store is either empty or your product data is once again cosplaying as a mystery.
+                No sale or featured items found.
               </div>
             )}
           </div>
@@ -841,7 +884,7 @@ export default function HomePage() {
             borderTop: '1px solid #e2e8f0',
             borderBottom: '1px solid #e2e8f0',
             overflow: 'hidden',
-            padding: '16px 24px',
+            padding: isMobile ? '14px 12px' : '16px 24px',
           }}
         >
           <div
@@ -853,7 +896,7 @@ export default function HomePage() {
               transform: 'translateX(0px)',
             }}
           >
-            <div className="catMarqueeGroup" style={{ display: 'flex', gap: 18, paddingRight: 18 }}>
+            <div className="catMarqueeGroup" style={{ display: 'flex', gap: isMobile ? 12 : 18, paddingRight: isMobile ? 12 : 18 }}>
               {MARQUEE_CATEGORIES.map((cat) => (
                 <Link
                   key={`g1-${cat.id}`}
@@ -862,7 +905,7 @@ export default function HomePage() {
                 >
                   <div
                     style={{
-                      width: 220,
+                      width: isMobile ? 160 : 220,
                       borderRadius: 16,
                       border: '1px solid #e2e8f0',
                       overflow: 'hidden',
@@ -879,15 +922,15 @@ export default function HomePage() {
                         backgroundPosition: 'center',
                       }}
                     />
-                    <div style={{ padding: '14px 14px 16px' }}>
-                      <div style={{ fontWeight: 900, fontSize: 14 }}>{cat.name}</div>
+                    <div style={{ padding: isMobile ? '10px 10px 12px' : '14px 14px 16px' }}>
+                      <div style={{ fontWeight: 900, fontSize: isMobile ? 12 : 14 }}>{cat.name}</div>
                     </div>
                   </div>
                 </Link>
               ))}
             </div>
 
-            <div className="catMarqueeGroup" style={{ display: 'flex', gap: 18, paddingRight: 18 }}>
+            <div className="catMarqueeGroup" style={{ display: 'flex', gap: isMobile ? 12 : 18, paddingRight: isMobile ? 12 : 18 }}>
               {MARQUEE_CATEGORIES.map((cat) => (
                 <Link
                   key={`g2-${cat.id}`}
@@ -896,7 +939,7 @@ export default function HomePage() {
                 >
                   <div
                     style={{
-                      width: 220,
+                      width: isMobile ? 160 : 220,
                       borderRadius: 16,
                       border: '1px solid #e2e8f0',
                       overflow: 'hidden',
@@ -913,8 +956,8 @@ export default function HomePage() {
                         backgroundPosition: 'center',
                       }}
                     />
-                    <div style={{ padding: '14px 14px 16px' }}>
-                      <div style={{ fontWeight: 900, fontSize: 14 }}>{cat.name}</div>
+                    <div style={{ padding: isMobile ? '10px 10px 12px' : '14px 14px 16px' }}>
+                      <div style={{ fontWeight: 900, fontSize: isMobile ? 12 : 14 }}>{cat.name}</div>
                     </div>
                   </div>
                 </Link>

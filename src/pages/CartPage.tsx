@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Trash2, ArrowRight, Truck, Store, ClipboardList } from 'lucide-react';
 import Header from '../components/Header';
@@ -133,6 +133,18 @@ export default function CartPage() {
   const [form, setForm] = useState<CheckoutForm>(initialForm);
   const [placing, setPlacing] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  const [screenWidth, setScreenWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 1280
+  );
+
+  useEffect(() => {
+    const onResize = () => setScreenWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const isMobile = screenWidth <= 900;
+  const isSmallMobile = screenWidth <= 560;
 
   const deliveryFee = getDeliveryFee(deliveryMethod);
   const orderTotal = getOrderTotal(deliveryMethod);
@@ -340,22 +352,24 @@ export default function CartPage() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 40,
+            padding: isMobile ? '32px 18px' : 40,
+            textAlign: 'center',
           }}
         >
-          <div style={{ fontSize: 64, marginBottom: 24 }}>🛒</div>
+          <div style={{ fontSize: isMobile ? 52 : 64, marginBottom: 24 }}>🛒</div>
           <h2
             style={{
               fontFamily: 'Barlow Condensed, sans-serif',
               fontWeight: 800,
-              fontSize: 30,
+              fontSize: isMobile ? 26 : 30,
               color: '#0f172a',
               marginBottom: 12,
+              lineHeight: 1.05,
             }}
           >
             Your cart is empty
           </h2>
-          <p style={{ color: '#64748b', marginBottom: 32 }}>
+          <p style={{ color: '#64748b', marginBottom: 32, maxWidth: 420 }}>
             Browse our wholesale catalogue to get started.
           </p>
           <Link
@@ -364,7 +378,7 @@ export default function CartPage() {
               background: '#f97316',
               color: 'white',
               textDecoration: 'none',
-              padding: '14px 36px',
+              padding: '14px 30px',
               borderRadius: 12,
               fontWeight: 800,
               fontSize: 16,
@@ -387,8 +401,8 @@ export default function CartPage() {
       <div
         style={{
           maxWidth: 1160,
-          margin: '42px auto 56px',
-          padding: '0 24px',
+          margin: isMobile ? '24px auto 40px' : '42px auto 56px',
+          padding: isMobile ? '0 12px' : '0 24px',
           width: '100%',
           boxSizing: 'border-box',
         }}
@@ -397,37 +411,47 @@ export default function CartPage() {
           style={{
             fontFamily: 'Barlow Condensed, sans-serif',
             fontWeight: 800,
-            fontSize: 42,
+            fontSize: isMobile ? 30 : 42,
             color: '#0f172a',
-            marginBottom: 28,
+            marginBottom: isMobile ? 20 : 28,
             display: 'flex',
             alignItems: 'center',
             gap: 12,
+            lineHeight: 1.05,
+            flexWrap: 'wrap',
           }}
         >
-          {step === 'cart' ? '🛒 Your Cart' : <><ClipboardList size={36} /> Checkout</>}
+          {step === 'cart' ? '🛒 Your Cart' : <><ClipboardList size={isMobile ? 28 : 36} /> Checkout</>}
         </h1>
 
         {step === 'cart' ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 360px',
+              gap: isMobile ? 18 : 24,
+            }}
+          >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {cart.map(({ product, quantity }) => (
                 <div
                   key={product.id}
                   style={{
                     ...cardStyle,
-                    padding: 20,
+                    padding: isMobile ? 14 : 20,
                     display: 'flex',
-                    gap: 16,
-                    alignItems: 'center',
+                    gap: isMobile ? 12 : 16,
+                    alignItems: isMobile ? 'flex-start' : 'center',
+                    flexDirection: isSmallMobile ? 'column' : 'row',
                   }}
                 >
                   <img
                     src={getProductImage(product)}
                     alt={product.name}
                     style={{
-                      width: 84,
-                      height: 84,
+                      width: isSmallMobile ? '100%' : 84,
+                      maxWidth: isSmallMobile ? '100%' : 84,
+                      height: isSmallMobile ? 180 : 84,
                       objectFit: 'cover',
                       borderRadius: 12,
                       flexShrink: 0,
@@ -440,7 +464,7 @@ export default function CartPage() {
                     }}
                   />
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
                     <h3
                       style={{
                         margin: '0 0 6px',
@@ -470,44 +494,64 @@ export default function CartPage() {
                     </p>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: isSmallMobile ? 'stretch' : 'center',
+                      gap: 10,
+                      width: isSmallMobile ? '100%' : 'auto',
+                      flexDirection: isSmallMobile ? 'column' : 'row',
+                    }}
+                  >
                     <div
                       style={{
                         display: 'flex',
                         alignItems: 'center',
+                        justifyContent: 'center',
                         border: '1px solid #dbe3ee',
                         borderRadius: 12,
                         overflow: 'hidden',
                         background: '#f8fafc',
+                        width: isSmallMobile ? '100%' : 'auto',
                       }}
                     >
                       <button
                         type="button"
                         onClick={() => updateCartQty(product.id, quantity - 1)}
                         style={{
-                          padding: '8px 12px',
+                          padding: '10px 14px',
                           background: 'transparent',
                           border: 'none',
                           cursor: 'pointer',
                           fontWeight: 700,
                           color: '#334155',
+                          flex: isSmallMobile ? 1 : 'unset',
                         }}
                       >
                         −
                       </button>
-                      <span style={{ padding: '8px 14px', fontWeight: 700, color: '#0f172a' }}>
+                      <span
+                        style={{
+                          padding: '10px 14px',
+                          fontWeight: 700,
+                          color: '#0f172a',
+                          minWidth: 46,
+                          textAlign: 'center',
+                        }}
+                      >
                         {quantity}
                       </span>
                       <button
                         type="button"
                         onClick={() => updateCartQty(product.id, quantity + 1)}
                         style={{
-                          padding: '8px 12px',
+                          padding: '10px 14px',
                           background: 'transparent',
                           border: 'none',
                           cursor: 'pointer',
                           fontWeight: 700,
                           color: '#334155',
+                          flex: isSmallMobile ? 1 : 'unset',
                         }}
                       >
                         +
@@ -519,8 +563,8 @@ export default function CartPage() {
                         fontWeight: 800,
                         color: '#1a2e7a',
                         fontSize: 16,
-                        minWidth: 88,
-                        textAlign: 'right',
+                        minWidth: isSmallMobile ? 'unset' : 88,
+                        textAlign: isSmallMobile ? 'left' : 'right',
                       }}
                     >
                       R{(toSafeNumber(product.price) * quantity).toFixed(2)}
@@ -537,6 +581,9 @@ export default function CartPage() {
                         padding: 9,
                         cursor: 'pointer',
                         display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: isSmallMobile ? '100%' : 'auto',
                       }}
                     >
                       <Trash2 size={16} />
@@ -549,10 +596,10 @@ export default function CartPage() {
             <div
               style={{
                 ...cardStyle,
-                padding: 26,
+                padding: isMobile ? 20 : 26,
                 height: 'fit-content',
-                position: 'sticky',
-                top: 100,
+                position: isMobile ? 'relative' : 'sticky',
+                top: isMobile ? 'auto' : 100,
               }}
             >
               <h3
@@ -585,31 +632,32 @@ export default function CartPage() {
                       fontSize: 13,
                       color: '#475569',
                       gap: 12,
+                      alignItems: 'flex-start',
                     }}
                   >
-                    <span style={{ lineHeight: 1.4 }}>
+                    <span style={{ lineHeight: 1.4, flex: 1 }}>
                       {product.name} × {quantity}
                     </span>
-                    <span style={{ fontWeight: 700 }}>
+                    <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                       R{(toSafeNumber(product.price) * quantity).toFixed(2)}
                     </span>
                   </div>
                 ))}
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 10, color: '#475569' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 10, color: '#475569', gap: 12 }}>
                 <span>Subtotal</span>
-                <span style={{ fontWeight: 700 }}>R{cartTotal.toFixed(2)}</span>
+                <span style={{ fontWeight: 700, textAlign: 'right' }}>R{cartTotal.toFixed(2)}</span>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 10, color: '#475569' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 10, color: '#475569', gap: 12 }}>
                 <span>Total Weight</span>
-                <span style={{ fontWeight: 700 }}>{cartWeight.toFixed(2)} kg</span>
+                <span style={{ fontWeight: 700, textAlign: 'right' }}>{cartWeight.toFixed(2)} kg</span>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 18, color: '#475569' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 18, color: '#475569', gap: 12 }}>
                 <span>Courier</span>
-                <span style={{ fontWeight: 700 }}>
+                <span style={{ fontWeight: 700, textAlign: 'right' }}>
                   {deliveryMethod === 'collection' ? 'R0.00' : `R${deliveryFee.toFixed(2)}`}
                 </span>
               </div>
@@ -619,16 +667,17 @@ export default function CartPage() {
                   display: 'flex',
                   justifyContent: 'space-between',
                   fontWeight: 900,
-                  fontSize: 24,
+                  fontSize: isMobile ? 22 : 24,
                   color: '#1a2e7a',
                   fontFamily: 'Barlow Condensed, sans-serif',
                   marginBottom: 22,
                   paddingTop: 16,
                   borderTop: '1px solid #e2e8f0',
+                  gap: 12,
                 }}
               >
                 <span>Total</span>
-                <span>R{orderTotal.toFixed(2)}</span>
+                <span style={{ textAlign: 'right' }}>R{orderTotal.toFixed(2)}</span>
               </div>
 
               <button
@@ -671,20 +720,27 @@ export default function CartPage() {
             </div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 22, alignItems: 'start' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 320px',
+              gap: isMobile ? 18 : 22,
+              alignItems: 'start',
+            }}
+          >
             <form
               onSubmit={handleOrder}
               style={{
                 ...cardStyle,
-                padding: 30,
+                padding: isMobile ? 18 : 30,
               }}
             >
-              <h3 style={sectionTitleStyle}>Delivery Details</h3>
+              <h3 style={{ ...sectionTitleStyle, fontSize: isMobile ? 20 : 22 }}>Delivery Details</h3>
 
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
+                  gridTemplateColumns: isSmallMobile ? '1fr' : '1fr 1fr',
                   gap: 14,
                   marginBottom: 28,
                 }}
@@ -769,7 +825,7 @@ export default function CartPage() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
+                  gridTemplateColumns: isSmallMobile ? '1fr' : '1fr 1fr',
                   gap: 14,
                   marginBottom: 18,
                 }}
@@ -835,7 +891,7 @@ export default function CartPage() {
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
+                      gridTemplateColumns: isSmallMobile ? '1fr' : '1fr 1fr',
                       gap: 14,
                       marginBottom: 18,
                     }}
@@ -872,7 +928,7 @@ export default function CartPage() {
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
+                      gridTemplateColumns: isSmallMobile ? '1fr' : '1fr 1fr',
                       gap: 14,
                       marginBottom: 18,
                     }}
@@ -938,23 +994,23 @@ export default function CartPage() {
                 style={{
                   marginTop: 10,
                   marginBottom: 18,
-                  padding: 18,
+                  padding: isMobile ? 16 : 18,
                   borderRadius: 16,
                   background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
                   border: '1px solid #e2e8f0',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 14, color: '#475569' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 14, color: '#475569', gap: 12 }}>
                   <span>Subtotal</span>
-                  <span style={{ fontWeight: 700 }}>R{cartTotal.toFixed(2)}</span>
+                  <span style={{ fontWeight: 700, textAlign: 'right' }}>R{cartTotal.toFixed(2)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 14, color: '#475569' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 14, color: '#475569', gap: 12 }}>
                   <span>Total Weight</span>
-                  <span style={{ fontWeight: 700 }}>{cartWeight.toFixed(2)} kg</span>
+                  <span style={{ fontWeight: 700, textAlign: 'right' }}>{cartWeight.toFixed(2)} kg</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 14, color: '#475569' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 14, color: '#475569', gap: 12 }}>
                   <span>{deliveryMethod === 'courier' ? 'Courier' : 'Collection'}</span>
-                  <span style={{ fontWeight: 700 }}>
+                  <span style={{ fontWeight: 700, textAlign: 'right' }}>
                     {deliveryMethod === 'collection' ? 'R0.00' : `R${deliveryFee.toFixed(2)}`}
                   </span>
                 </div>
@@ -968,11 +1024,12 @@ export default function CartPage() {
                     fontWeight: 800,
                     color: '#1a2e7a',
                     fontFamily: 'Barlow Condensed, sans-serif',
-                    fontSize: 22,
+                    fontSize: isMobile ? 20 : 22,
+                    gap: 12,
                   }}
                 >
                   <span>Total</span>
-                  <span>R{orderTotal.toFixed(2)}</span>
+                  <span style={{ textAlign: 'right' }}>R{orderTotal.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -1024,7 +1081,7 @@ export default function CartPage() {
                   borderRadius: 14,
                   padding: '15px 0',
                   fontWeight: 800,
-                  fontSize: 18,
+                  fontSize: isMobile ? 16 : 18,
                   cursor: placing ? 'not-allowed' : 'pointer',
                   fontFamily: 'Barlow Condensed, sans-serif',
                   marginTop: 8,
@@ -1054,10 +1111,10 @@ export default function CartPage() {
             <div
               style={{
                 ...cardStyle,
-                padding: 22,
+                padding: isMobile ? 18 : 22,
                 height: 'fit-content',
-                position: 'sticky',
-                top: 100,
+                position: isMobile ? 'relative' : 'sticky',
+                top: isMobile ? 'auto' : 100,
               }}
             >
               <h3
@@ -1117,17 +1174,17 @@ export default function CartPage() {
               ))}
 
               <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, marginTop: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8, color: '#475569' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8, color: '#475569', gap: 12 }}>
                   <span>Subtotal</span>
-                  <span style={{ fontWeight: 700 }}>R{cartTotal.toFixed(2)}</span>
+                  <span style={{ fontWeight: 700, textAlign: 'right' }}>R{cartTotal.toFixed(2)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8, color: '#475569' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8, color: '#475569', gap: 12 }}>
                   <span>Total Weight</span>
-                  <span style={{ fontWeight: 700 }}>{cartWeight.toFixed(2)} kg</span>
+                  <span style={{ fontWeight: 700, textAlign: 'right' }}>{cartWeight.toFixed(2)} kg</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8, color: '#475569' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8, color: '#475569', gap: 12 }}>
                   <span>{deliveryMethod === 'courier' ? 'Courier' : 'Collection'}</span>
-                  <span style={{ fontWeight: 700 }}>
+                  <span style={{ fontWeight: 700, textAlign: 'right' }}>
                     {deliveryMethod === 'collection' ? 'R0.00' : `R${deliveryFee.toFixed(2)}`}
                   </span>
                 </div>
@@ -1142,10 +1199,11 @@ export default function CartPage() {
                     paddingTop: 10,
                     marginTop: 10,
                     borderTop: '1px solid #e2e8f0',
+                    gap: 12,
                   }}
                 >
                   <span>Total</span>
-                  <span>R{orderTotal.toFixed(2)}</span>
+                  <span style={{ textAlign: 'right' }}>R{orderTotal.toFixed(2)}</span>
                 </div>
               </div>
             </div>

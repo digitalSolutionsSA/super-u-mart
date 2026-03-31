@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal, X } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import ProductCard from "../components/ProductCard";
@@ -24,6 +24,25 @@ export default function ShopPage() {
   const [sortBy, setSortBy] = useState("default");
   const [priceMax, setPriceMax] = useState(10000);
   const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [screenWidth, setScreenWidth] = useState(
+    typeof window !== "undefined" ? window.innerWidth : 1280
+  );
+
+  useEffect(() => {
+    const onResize = () => {
+      setScreenWidth(window.innerWidth);
+      if (window.innerWidth > 900) {
+        setFiltersOpen(false);
+      }
+    };
+
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const isMobile = screenWidth <= 900;
+  const isSmallMobile = screenWidth <= 560;
 
   const SHOP_CATEGORY_ORDER = useMemo(
     () => [
@@ -243,6 +262,7 @@ export default function ShopPage() {
 
   const setCategory = (catKey: string) => {
     updateSearchParams(normalizeCategoryKey(catKey), searchQuery);
+    if (isMobile) setFiltersOpen(false);
   };
 
   const productMatchesCategory = (product: any, selectedKey: string) => {
@@ -325,6 +345,187 @@ export default function ShopPage() {
     return found?.name ?? "Products";
   }, [categoryKey, allowedCategories]);
 
+  const filterPanel = (
+    <div
+      style={{
+        background: "white",
+        borderRadius: isMobile ? "0 18px 18px 0" : 12,
+        border: "1px solid #e2e8f0",
+        overflow: "hidden",
+        position: isMobile ? "relative" : "sticky",
+        top: isMobile ? "auto" : 120,
+        width: isMobile ? (isSmallMobile ? "88%" : "82%") : "100%",
+        maxWidth: isMobile ? 360 : "100%",
+        height: isMobile ? "100vh" : "auto",
+        overflowY: isMobile ? "auto" : "visible",
+        boxShadow: isMobile ? "0 20px 60px rgba(0,0,0,0.35)" : "none",
+      }}
+    >
+      <div
+        style={{
+          background: "#1a2e7a",
+          padding: "14px 18px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <SlidersHorizontal size={16} color="white" />
+          <span style={{ color: "white", fontWeight: 700, fontSize: 14 }}>
+            Filters
+          </span>
+        </div>
+
+        {isMobile && (
+          <button
+            onClick={() => setFiltersOpen(false)}
+            aria-label="Close filters"
+            style={{
+              border: "none",
+              background: "rgba(255,255,255,0.12)",
+              color: "white",
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >
+            <X size={18} />
+          </button>
+        )}
+      </div>
+
+      <div style={{ padding: 18, borderBottom: "1px solid #f1f5f9" }}>
+        <h4
+          style={{
+            margin: "0 0 12px",
+            fontSize: 12,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: 0.8,
+            color: "#94a3b8",
+          }}
+        >
+          Category
+        </h4>
+
+        <button
+          onClick={() => setCategory("")}
+          style={{
+            display: "block",
+            width: "100%",
+            textAlign: "left",
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "none",
+            cursor: "pointer",
+            marginBottom: 6,
+            background: !categoryKey ? "#f97316" : "transparent",
+            color: !categoryKey ? "white" : "#475569",
+            fontWeight: !categoryKey ? 700 : 500,
+            fontSize: 13,
+          }}
+        >
+          All Products
+        </button>
+
+        {allowedCategories.map((cat: any) => {
+          const active = categoryKey === cat.key;
+
+          return (
+            <button
+              key={cat.key}
+              onClick={() => setCategory(cat.key)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: "none",
+                cursor: "pointer",
+                marginBottom: 6,
+                background: active ? "#fff7ed" : "transparent",
+                color: active ? "#f97316" : "#475569",
+                fontWeight: active ? 700 : 500,
+                fontSize: 13,
+              }}
+            >
+              <span>{cat?.icon || "•"}</span>
+              {cat?.name}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ padding: 18 }}>
+        <h4
+          style={{
+            margin: "0 0 12px",
+            fontSize: 12,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: 0.8,
+            color: "#94a3b8",
+          }}
+        >
+          Max Price
+        </h4>
+
+        <input
+          type="range"
+          min={0}
+          max={10000}
+          step={50}
+          value={priceMax}
+          onChange={(e) => setPriceMax(Number(e.target.value))}
+          style={{ width: "100%", accentColor: "#f97316" }}
+        />
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: 12,
+            color: "#64748b",
+            marginTop: 4,
+          }}
+        >
+          <span>R0</span>
+          <span style={{ fontWeight: 700, color: "#f97316" }}>
+            R{priceMax.toLocaleString()}
+          </span>
+        </div>
+
+        {isMobile && (
+          <button
+            onClick={() => setFiltersOpen(false)}
+            style={{
+              marginTop: 16,
+              width: "100%",
+              background: "#f97316",
+              color: "white",
+              border: "none",
+              borderRadius: 10,
+              padding: "12px 16px",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Apply Filters
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div
       style={{
@@ -336,7 +537,7 @@ export default function ShopPage() {
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
-        backgroundAttachment: "fixed",
+        backgroundAttachment: isMobile ? "scroll" : "fixed",
         fontFamily: "Barlow, sans-serif",
       }}
     >
@@ -351,157 +552,49 @@ export default function ShopPage() {
         style={{
           maxWidth: 1300,
           margin: "0 auto",
-          padding: "32px 24px",
+          padding: isMobile ? "20px 12px" : "32px 24px",
           width: "100%",
           display: "grid",
-          gridTemplateColumns: "240px 1fr",
-          gap: 28,
+          gridTemplateColumns: isMobile ? "1fr" : "240px 1fr",
+          gap: isMobile ? 16 : 28,
           flex: 1,
           boxSizing: "border-box",
         }}
       >
-        <aside>
-          <div
-            style={{
-              background: "white",
-              borderRadius: 12,
-              border: "1px solid #e2e8f0",
-              overflow: "hidden",
-              position: "sticky",
-              top: 120,
-            }}
-          >
-            <div
+        {!isMobile && <aside>{filterPanel}</aside>}
+
+        <main style={{ minWidth: 0 }}>
+          {isMobile && (
+            <button
+              onClick={() => setFiltersOpen(true)}
               style={{
-                background: "#1a2e7a",
-                padding: "14px 18px",
+                marginBottom: 14,
+                background: "#f97316",
+                color: "white",
+                border: "none",
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontWeight: 700,
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
+                cursor: "pointer",
               }}
             >
-              <SlidersHorizontal size={16} color="white" />
-              <span style={{ color: "white", fontWeight: 700, fontSize: 14 }}>
-                Filters
-              </span>
-            </div>
+              <SlidersHorizontal size={16} />
+              Filters
+            </button>
+          )}
 
-            <div style={{ padding: 18, borderBottom: "1px solid #f1f5f9" }}>
-              <h4
-                style={{
-                  margin: "0 0 12px",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8,
-                  color: "#94a3b8",
-                }}
-              >
-                Category
-              </h4>
-
-              <button
-                onClick={() => setCategory("")}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "none",
-                  cursor: "pointer",
-                  marginBottom: 4,
-                  background: !categoryKey ? "#f97316" : "transparent",
-                  color: !categoryKey ? "white" : "#475569",
-                  fontWeight: !categoryKey ? 700 : 400,
-                  fontSize: 13,
-                }}
-              >
-                All Products
-              </button>
-
-              {allowedCategories.map((cat: any) => {
-                const active = categoryKey === cat.key;
-
-                return (
-                  <button
-                    key={cat.key}
-                    onClick={() => setCategory(cat.key)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      borderRadius: 6,
-                      border: "none",
-                      cursor: "pointer",
-                      marginBottom: 4,
-                      background: active ? "#fff7ed" : "transparent",
-                      color: active ? "#f97316" : "#475569",
-                      fontWeight: active ? 700 : 400,
-                      fontSize: 13,
-                    }}
-                  >
-                    <span>{cat?.icon || "•"}</span>
-                    {cat?.name}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div style={{ padding: 18 }}>
-              <h4
-                style={{
-                  margin: "0 0 12px",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8,
-                  color: "#94a3b8",
-                }}
-              >
-                Max Price
-              </h4>
-
-              <input
-                type="range"
-                min={0}
-                max={10000}
-                step={50}
-                value={priceMax}
-                onChange={(e) => setPriceMax(Number(e.target.value))}
-                style={{ width: "100%", accentColor: "#f97316" }}
-              />
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: 12,
-                  color: "#64748b",
-                  marginTop: 4,
-                }}
-              >
-                <span>R0</span>
-                <span style={{ fontWeight: 700, color: "#f97316" }}>
-                  R{priceMax.toLocaleString()}
-                </span>
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        <main>
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
-              alignItems: "center",
+              alignItems: isMobile ? "stretch" : "center",
               marginBottom: 20,
               gap: 16,
               flexWrap: "wrap",
+              flexDirection: isMobile ? "column" : "row",
             }}
           >
             <div>
@@ -510,8 +603,9 @@ export default function ShopPage() {
                   margin: 0,
                   fontFamily: "Barlow Condensed, sans-serif",
                   fontWeight: 800,
-                  fontSize: 28,
+                  fontSize: isMobile ? 24 : 28,
                   color: "#ffffff",
+                  lineHeight: 1.05,
                 }}
               >
                 {activeCategoryName}
@@ -526,15 +620,17 @@ export default function ShopPage() {
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
               style={{
-                padding: "8px 14px",
+                padding: "10px 14px",
                 borderRadius: 8,
                 border: "1px solid #e2e8f0",
                 fontSize: 13,
                 fontFamily: "Barlow, sans-serif",
                 color: "#475569",
                 cursor: "pointer",
-                minWidth: 150,
+                minWidth: isMobile ? "100%" : 150,
+                width: isMobile ? "100%" : "auto",
                 background: "#ffffff",
+                boxSizing: "border-box",
               }}
             >
               <option value="default">Sort: Default</option>
@@ -556,7 +652,7 @@ export default function ShopPage() {
               placeholder="Search products by name, barcode, or description..."
               style={{
                 width: "100%",
-                padding: "12px 16px",
+                padding: isMobile ? "13px 14px" : "12px 16px",
                 borderRadius: 8,
                 border: "2px solid #e2e8f0",
                 fontSize: 14,
@@ -587,8 +683,12 @@ export default function ShopPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
-                gap: 20,
+                gridTemplateColumns: isSmallMobile
+                  ? "1fr"
+                  : isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : "repeat(auto-fill, minmax(250px, 1fr))",
+                gap: isMobile ? 14 : 20,
                 alignItems: "stretch",
               }}
             >
@@ -614,6 +714,30 @@ export default function ShopPage() {
           )}
         </main>
       </div>
+
+      {isMobile && filtersOpen && (
+        <div
+          onClick={() => setFiltersOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 300,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            justifyContent: "flex-start",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              height: "100%",
+              display: "flex",
+            }}
+          >
+            {filterPanel}
+          </div>
+        </div>
+      )}
 
       <Footer />
 
