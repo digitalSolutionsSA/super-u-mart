@@ -12,7 +12,7 @@ export default function AdminLogin() {
   const navigate = useNavigate();
   const { login, user } = useAdminAuth() as any;
 
-  const [email, setEmail] = useState(user?.email ?? "");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -99,7 +99,7 @@ export default function AdminLogin() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full outline-none text-sm"
-                    placeholder="admin@superumart.co.za"
+                    placeholder="Enter your email"
                     autoComplete="email"
                   />
                 </div>

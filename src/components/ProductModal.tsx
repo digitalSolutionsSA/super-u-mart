@@ -134,11 +134,9 @@ export default function ProductModal({ product, onClose }: ProductModalProps) {
   };
 
   const goToCart = () => {
-    if (!hasStock) return;
-    addToCart(product, qty);
-    navigate('/cart');
-    onClose();
-  };
+  onClose();
+  navigate('/cart');
+};
 
   return (
     <div

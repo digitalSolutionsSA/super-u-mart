@@ -180,6 +180,16 @@ export default function OrderSuccessPage() {
 
   const [copied, setCopied] = useState(false);
   const [snapshot, setSnapshot] = useState<SnapshotOrder | null>(null);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     try {
@@ -207,7 +217,7 @@ export default function OrderSuccessPage() {
     if (!storeOrder) return null;
 
     return {
-      orderRef: orderRefFromUrl || String(storeOrder.id ?? ''),
+      orderRef: orderRefFromUrl || String((storeOrder as any).id ?? ''),
       createdAt: undefined,
       deliveryMethod: (storeOrder as any).deliveryMethod,
       customer: {
@@ -243,15 +253,21 @@ export default function OrderSuccessPage() {
 
     const resolvedOrderRef = order.orderRef || orderRefFromUrl;
     if (!resolvedOrderRef) {
-      console.warn('Skipping owner notification: missing orderRef');
+      console.warn('Skipping customer email: missing orderRef');
       return;
     }
 
-    const sentKey = `ownerNotificationSent:${resolvedOrderRef}`;
+    const customerEmail = order.customer?.email || '';
+    if (!customerEmail) {
+      console.warn('Skipping customer email: missing customer email');
+      return;
+    }
+
+    const sentKey = `customerEmailSent:${resolvedOrderRef}`;
     const alreadySent = sessionStorage.getItem(sentKey);
 
     if (alreadySent === 'true') {
-      console.log('Owner notification already sent for this orderRef:', resolvedOrderRef);
+      console.log('Customer email already sent for this orderRef:', resolvedOrderRef);
       return;
     }
 
@@ -261,57 +277,54 @@ export default function OrderSuccessPage() {
         ? buildAddressLines(order)
         : ['Collect in store'];
 
-    const ownerNotificationPayload = {
+    const emailPayload = {
       orderRef: resolvedOrderRef,
       createdAt: order.createdAt || new Date().toISOString(),
-      customerName: order.customer?.name || 'Unknown customer',
-      phone: order.customer?.phone || '-',
-      email: order.customer?.email || '-',
-      deliveryMethod: order.deliveryMethod === 'courier' ? 'delivery' : 'collection',
-      address: addressLines.join('\n'),
-      note:
-        order.deliveryMethod === 'collection'
-          ? order.collectionNote || '-'
-          : order.deliveryAddress?.note || '-',
+      amount: safeNumber(order.total),
+      deliveryMethod: order.deliveryMethod === 'collection' ? 'collection' : 'courier',
+      deliveryFee: order.deliveryMethod === 'collection' ? 0 : safeNumber(order.deliveryFee),
+      totalKg: safeNumber(order.totalWeight),
+      customerName: order.customer?.name || 'Customer',
+      customerEmail,
+      customerPhone: order.customer?.phone || '-',
+      collectionNote: order.collectionNote || '',
+      deliveryAddress: addressLines.join('\n'),
       items: items.map(item => ({
-        ...item,
-        price_cents: Math.round(safeNumber(item.price) * 100),
+        name: item.name || 'Product',
+        quantity: safeNumber(item.quantity ?? item.qty, 0),
+        weightKg: safeNumber(item.weightKg, 0),
+        price: safeNumber(item.price, 0),
       })),
-      total: formatMoney(order.total),
-      courierFee:
-        order.deliveryMethod === 'collection'
-          ? '0.00'
-          : safeNumber(order.deliveryFee).toFixed(2),
     };
 
-    const sendNotification = async () => {
+    const sendCustomerEmail = async () => {
       try {
-        console.log('Sending owner notification from OrderSuccessPage:', ownerNotificationPayload);
+        console.log('Sending customer order email from OrderSuccessPage:', emailPayload);
 
-        const response = await fetch('/.netlify/functions/send-order-notification', {
+        const response = await fetch('/.netlify/functions/send-order-completed-email', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(ownerNotificationPayload),
+          body: JSON.stringify(emailPayload),
         });
 
         const responseText = await response.text();
 
-        console.log('send-order-notification status:', response.status);
-        console.log('send-order-notification response:', responseText);
+        console.log('send-order-completed-email status:', response.status);
+        console.log('send-order-completed-email response:', responseText);
 
         if (!response.ok) {
-          throw new Error(responseText || 'Failed to send owner notification');
+          throw new Error(responseText || 'Failed to send customer email');
         }
 
         sessionStorage.setItem(sentKey, 'true');
       } catch (error) {
-        console.error('Owner WhatsApp notification failed on success page:', error);
+        console.error('Customer email failed on success page:', error);
       }
     };
 
-    sendNotification();
+    sendCustomerEmail();
   }, [order, checkoutStatus, orderRefFromUrl]);
 
   const items = Array.isArray(order?.items) ? order.items : [];
@@ -358,17 +371,31 @@ export default function OrderSuccessPage() {
 
   const mainCard: React.CSSProperties = {
     background: 'rgba(255,255,255,0.98)',
-    borderRadius: 24,
+    borderRadius: isMobile ? 18 : 24,
     border: '1px solid #e2e8f0',
     boxShadow: '0 14px 40px rgba(15, 23, 42, 0.08)',
   };
 
   const infoCard: React.CSSProperties = {
     background: '#ffffff',
-    borderRadius: 18,
+    borderRadius: isMobile ? 14 : 18,
     border: '1px solid #e2e8f0',
     boxShadow: '0 8px 24px rgba(15, 23, 42, 0.05)',
-    padding: 24,
+    padding: isMobile ? 16 : 24,
+  };
+
+  const labelStyle: React.CSSProperties = {
+    color: '#94a3b8',
+    fontSize: 13,
+    flexShrink: 0,
+  };
+
+  const valueStyle: React.CSSProperties = {
+    color: '#334155',
+    fontWeight: 600,
+    textAlign: 'right',
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
   };
 
   return (
@@ -381,60 +408,62 @@ export default function OrderSuccessPage() {
           width: '100%',
           maxWidth: 1160,
           margin: '0 auto',
-          padding: '42px 24px 56px',
+          padding: isMobile ? '20px 12px 36px' : '42px 24px 56px',
           boxSizing: 'border-box',
         }}
       >
         <div
           style={{
             ...mainCard,
-            padding: 32,
+            padding: isMobile ? 16 : 32,
           }}
         >
           <div
             style={{
               display: 'flex',
-              alignItems: 'flex-start',
-              gap: 18,
-              marginBottom: 28,
-              flexWrap: 'wrap',
+              flexDirection: isMobile ? 'column' : 'row',
+              alignItems: isMobile ? 'stretch' : 'flex-start',
+              gap: isMobile ? 14 : 18,
+              marginBottom: isMobile ? 22 : 28,
             }}
           >
             <div
               style={{
-                width: 78,
-                height: 78,
-                borderRadius: 22,
+                width: isMobile ? 66 : 78,
+                height: isMobile ? 66 : 78,
+                borderRadius: isMobile ? 18 : 22,
                 display: 'grid',
                 placeItems: 'center',
                 background: 'rgba(34, 197, 94, 0.10)',
                 border: '1px solid rgba(34, 197, 94, 0.20)',
                 flexShrink: 0,
+                margin: isMobile ? '0 auto' : 0,
               }}
             >
-              <CheckCircle size={46} color="#22c55e" />
+              <CheckCircle size={isMobile ? 38 : 46} color="#22c55e" />
             </div>
 
-            <div style={{ flex: 1, minWidth: 280 }}>
+            <div style={{ flex: 1, minWidth: 0, textAlign: isMobile ? 'center' : 'left' }}>
               <h1
                 style={{
                   margin: '0 0 10px',
                   fontFamily: 'Barlow Condensed, sans-serif',
                   fontWeight: 900,
-                  fontSize: 42,
+                  fontSize: isMobile ? 30 : 42,
                   color: '#0f172a',
                   lineHeight: 1,
                 }}
               >
                 Payment completed
               </h1>
+
               <p
                 style={{
                   margin: 0,
                   color: '#64748b',
-                  fontSize: 17,
+                  fontSize: isMobile ? 15 : 17,
                   lineHeight: 1.7,
-                  maxWidth: 760,
+                  maxWidth: isMobile ? '100%' : 760,
                 }}
               >
                 Thank you. Your checkout was completed successfully. The full order details are shown
@@ -447,8 +476,8 @@ export default function OrderSuccessPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 24,
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+              gap: isMobile ? 14 : 24,
               alignItems: 'start',
             }}
           >
@@ -457,7 +486,7 @@ export default function OrderSuccessPage() {
                 style={{
                   margin: '0 0 18px',
                   fontWeight: 800,
-                  fontSize: 19,
+                  fontSize: isMobile ? 18 : 19,
                   color: '#0f172a',
                 }}
               >
@@ -489,7 +518,9 @@ export default function OrderSuccessPage() {
                     paddingTop: 16,
                     display: 'flex',
                     justifyContent: 'space-between',
-                    alignItems: 'center',
+                    alignItems: isMobile ? 'flex-start' : 'center',
+                    gap: 12,
+                    flexDirection: isMobile ? 'column' : 'row',
                   }}
                 >
                   <span
@@ -501,12 +532,13 @@ export default function OrderSuccessPage() {
                   >
                     Grand total
                   </span>
+
                   <span
                     style={{
                       color: '#f97316',
                       fontFamily: 'Barlow Condensed, sans-serif',
                       fontWeight: 900,
-                      fontSize: 34,
+                      fontSize: isMobile ? 30 : 34,
                       lineHeight: 1,
                     }}
                   >
@@ -524,34 +556,70 @@ export default function OrderSuccessPage() {
                   gap: 12,
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                  <span style={{ color: '#94a3b8', fontSize: 13 }}>Order Ref</span>
-                  <span style={{ color: '#1a2e7a', fontWeight: 700, textAlign: 'right' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 14,
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <span style={labelStyle}>Order Ref</span>
+                  <span
+                    style={{
+                      color: '#1a2e7a',
+                      fontWeight: 700,
+                      textAlign: 'right',
+                      overflowWrap: 'anywhere',
+                      wordBreak: 'break-word',
+                      maxWidth: isMobile ? '60%' : 280,
+                    }}
+                  >
                     {order?.orderRef || 'N/A'}
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                  <span style={{ color: '#94a3b8', fontSize: 13 }}>Created</span>
-                  <span style={{ color: '#334155', fontWeight: 600, textAlign: 'right' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 14,
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <span style={labelStyle}>Created</span>
+                  <span style={{ ...valueStyle, maxWidth: isMobile ? '60%' : 280 }}>
                     {formatDate(order?.createdAt)}
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                  <span style={{ color: '#94a3b8', fontSize: 13 }}>Customer</span>
-                  <span style={{ color: '#334155', fontWeight: 600, textAlign: 'right' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 14,
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <span style={labelStyle}>Customer</span>
+                  <span style={{ ...valueStyle, maxWidth: isMobile ? '60%' : 280 }}>
                     {order?.customer?.name || 'N/A'}
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                  <span style={{ color: '#94a3b8', fontSize: 13 }}>Delivery</span>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 14,
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <span style={labelStyle}>Delivery</span>
                   <span
                     style={{
-                      color: '#334155',
-                      fontWeight: 600,
-                      textAlign: 'right',
+                      ...valueStyle,
+                      maxWidth: isMobile ? '60%' : 280,
                       textTransform: 'capitalize',
                     }}
                   >
@@ -559,14 +627,19 @@ export default function OrderSuccessPage() {
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                  <span style={{ color: '#94a3b8', fontSize: 13 }}>Address</span>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 14,
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <span style={labelStyle}>Address</span>
                   <span
                     style={{
-                      color: '#334155',
-                      fontWeight: 600,
-                      textAlign: 'right',
-                      maxWidth: 280,
+                      ...valueStyle,
+                      maxWidth: isMobile ? '60%' : 280,
                       lineHeight: 1.5,
                     }}
                   >
@@ -581,10 +654,11 @@ export default function OrderSuccessPage() {
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
-                  alignItems: 'flex-start',
+                  alignItems: isMobile ? 'stretch' : 'flex-start',
                   gap: 12,
                   marginBottom: 14,
                   flexWrap: 'wrap',
+                  flexDirection: isMobile ? 'column' : 'row',
                 }}
               >
                 <div>
@@ -592,7 +666,7 @@ export default function OrderSuccessPage() {
                     style={{
                       margin: '0 0 6px',
                       fontWeight: 800,
-                      fontSize: 19,
+                      fontSize: isMobile ? 18 : 19,
                       color: '#0f172a',
                     }}
                   >
@@ -616,15 +690,18 @@ export default function OrderSuccessPage() {
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
+                    justifyContent: 'center',
                     gap: 8,
                     background: copied ? '#dcfce7' : '#1a2e7a',
                     color: copied ? '#166534' : '#ffffff',
                     border: copied ? '1px solid #bbf7d0' : 'none',
                     borderRadius: 12,
-                    padding: '11px 14px',
+                    padding: '12px 14px',
                     cursor: 'pointer',
                     fontWeight: 800,
                     fontSize: 14,
+                    width: isMobile ? '100%' : 'auto',
+                    minHeight: 46,
                   }}
                 >
                   {copied ? <ClipboardCheck size={16} /> : <Copy size={16} />}
@@ -637,16 +714,18 @@ export default function OrderSuccessPage() {
                   borderRadius: 16,
                   background: '#f8fafc',
                   border: '1px solid #e2e8f0',
-                  padding: 18,
+                  padding: isMobile ? 14 : 18,
+                  overflow: 'hidden',
                 }}
               >
                 <pre
                   style={{
                     margin: 0,
                     whiteSpace: 'pre-wrap',
+                    overflowWrap: 'anywhere',
                     wordBreak: 'break-word',
                     color: '#334155',
-                    fontSize: 14,
+                    fontSize: isMobile ? 13 : 14,
                     lineHeight: 1.6,
                     fontFamily:
                       'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
@@ -661,14 +740,14 @@ export default function OrderSuccessPage() {
           <div
             style={{
               ...infoCard,
-              marginTop: 24,
+              marginTop: isMobile ? 14 : 24,
             }}
           >
             <h2
               style={{
                 margin: '0 0 18px',
                 fontWeight: 800,
-                fontSize: 19,
+                fontSize: isMobile ? 18 : 19,
                 color: '#0f172a',
               }}
             >
@@ -678,14 +757,14 @@ export default function OrderSuccessPage() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
                 gap: 16,
                 marginBottom: 20,
               }}
             >
               <div
                 style={{
-                  padding: 16,
+                  padding: isMobile ? 14 : 16,
                   borderRadius: 16,
                   background: '#f8fafc',
                   border: '1px solid #e2e8f0',
@@ -704,7 +783,16 @@ export default function OrderSuccessPage() {
                   <User size={16} />
                   Customer
                 </div>
-                <div style={{ color: '#334155', fontSize: 14, lineHeight: 1.7 }}>
+
+                <div
+                  style={{
+                    color: '#334155',
+                    fontSize: 14,
+                    lineHeight: 1.7,
+                    overflowWrap: 'anywhere',
+                    wordBreak: 'break-word',
+                  }}
+                >
                   <div>{order?.customer?.name || 'N/A'}</div>
                   <div>{order?.customer?.email || 'N/A'}</div>
                   <div>{order?.customer?.phone || 'N/A'}</div>
@@ -713,7 +801,7 @@ export default function OrderSuccessPage() {
 
               <div
                 style={{
-                  padding: 16,
+                  padding: isMobile ? 14 : 16,
                   borderRadius: 16,
                   background: '#f8fafc',
                   border: '1px solid #e2e8f0',
@@ -732,7 +820,16 @@ export default function OrderSuccessPage() {
                   {order?.deliveryMethod === 'collection' ? <Store size={16} /> : <Truck size={16} />}
                   {order?.deliveryMethod === 'collection' ? 'Collection' : 'Delivery'}
                 </div>
-                <div style={{ color: '#334155', fontSize: 14, lineHeight: 1.7 }}>
+
+                <div
+                  style={{
+                    color: '#334155',
+                    fontSize: 14,
+                    lineHeight: 1.7,
+                    overflowWrap: 'anywhere',
+                    wordBreak: 'break-word',
+                  }}
+                >
                   {order?.deliveryMethod === 'collection' ? (
                     <div>{order?.collectionNote || 'Collection from store'}</div>
                   ) : (
@@ -761,30 +858,37 @@ export default function OrderSuccessPage() {
                       style={{
                         display: 'flex',
                         justifyContent: 'space-between',
-                        gap: 16,
-                        padding: '14px 16px',
+                        alignItems: isMobile ? 'flex-start' : 'center',
+                        flexDirection: isMobile ? 'column' : 'row',
+                        gap: isMobile ? 8 : 16,
+                        padding: isMobile ? 12 : '14px 16px',
                         borderRadius: 16,
                         background: '#f8fafc',
                         border: '1px solid #e2e8f0',
                       }}
                     >
-                      <div style={{ minWidth: 0 }}>
+                      <div style={{ minWidth: 0, width: '100%' }}>
                         <div
                           style={{
                             color: '#0f172a',
                             fontWeight: 700,
                             fontSize: 15,
                             lineHeight: 1.35,
+                            overflowWrap: 'anywhere',
+                            wordBreak: 'break-word',
                           }}
                         >
                           {item.name || 'Product'}
                         </div>
+
                         <div
                           style={{
                             color: '#64748b',
                             fontSize: 13,
                             marginTop: 4,
                             lineHeight: 1.5,
+                            overflowWrap: 'anywhere',
+                            wordBreak: 'break-word',
                           }}
                         >
                           Qty {qty}
@@ -800,7 +904,8 @@ export default function OrderSuccessPage() {
                           color: '#1a2e7a',
                           fontWeight: 800,
                           fontSize: 15,
-                          whiteSpace: 'nowrap',
+                          whiteSpace: isMobile ? 'normal' : 'nowrap',
+                          alignSelf: isMobile ? 'flex-end' : 'auto',
                         }}
                       >
                         {formatMoney(qty * price)}
@@ -828,10 +933,11 @@ export default function OrderSuccessPage() {
           <div
             style={{
               display: 'flex',
+              flexDirection: isMobile ? 'column' : 'row',
               gap: 14,
               justifyContent: 'center',
               flexWrap: 'wrap',
-              marginTop: 28,
+              marginTop: isMobile ? 20 : 28,
             }}
           >
             <Link
@@ -839,6 +945,7 @@ export default function OrderSuccessPage() {
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: 8,
                 background: '#1a2e7a',
                 color: 'white',
@@ -847,6 +954,7 @@ export default function OrderSuccessPage() {
                 borderRadius: 12,
                 fontWeight: 800,
                 boxShadow: '0 10px 20px rgba(26, 46, 122, 0.18)',
+                width: isMobile ? '100%' : 'auto',
               }}
             >
               <Home size={16} /> Home
@@ -857,6 +965,7 @@ export default function OrderSuccessPage() {
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: 8,
                 background: '#f97316',
                 color: 'white',
@@ -865,6 +974,7 @@ export default function OrderSuccessPage() {
                 borderRadius: 12,
                 fontWeight: 800,
                 boxShadow: '0 10px 20px rgba(249, 115, 22, 0.20)',
+                width: isMobile ? '100%' : 'auto',
               }}
             >
               <ShoppingBag size={16} /> Shop More
