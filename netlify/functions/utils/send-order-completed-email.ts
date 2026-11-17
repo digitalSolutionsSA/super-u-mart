@@ -116,14 +116,18 @@ export async function sendOrderCompletedEmail(
 
   const subject = `Order completed - ${order.orderRef}`;
 
-  const { data, error } = await resend.emails.send({
-    from: process.env.RESEND_FROM_EMAIL,
-    to: notificationRecipients,
-    subject,
-    text: buildOrderCompletedText(order),
-    html: buildOrderCompletedHtml(order),
-    replyTo: order.customerEmail || undefined,
-  });
+  const { data, error } = await resend.emails.send(
+    {
+      from: process.env.RESEND_FROM_EMAIL,
+      to: notificationRecipients,
+      subject,
+      text: buildOrderCompletedText(order),
+      html: buildOrderCompletedHtml(order),
+      replyTo: order.customerEmail || undefined,
+    },
+    // Resend drops repeats with the same key for 24h (webhook retries).
+    { idempotencyKey: `shop-order-${order.orderRef.replace(/[^\w-]/g, '')}` }
+  );
 
   if (error) {
     throw new Error(`Resend error: ${error.message}`);

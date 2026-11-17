@@ -13,6 +13,7 @@ import {
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { useStore } from '../context/StoreContext';
+import { toAnalyticsItem, trackPurchase } from '../lib/analytics';
 
 type SnapshotItem = {
   id?: string;
@@ -98,23 +99,6 @@ function buildAddressText(order: SnapshotOrder | null) {
     .join(', ');
 }
 
-function buildAddressLines(order: SnapshotOrder | null) {
-  if (!order) return ['N/A'];
-
-  const address = order.deliveryAddress;
-  if (!address) {
-    return order.deliveryMethod === 'collection' ? ['Collect in store'] : ['N/A'];
-  }
-
-  return [
-    address.streetAddress || address.addressLine1,
-    address.addressLine2,
-    address.suburb,
-    [address.city, address.province].filter(Boolean).join(', '),
-    address.postalCode || address.postal_code,
-  ].filter(Boolean) as string[];
-}
-
 function buildCopyText(order: SnapshotOrder) {
   const items = Array.isArray(order.items) ? order.items : [];
   const address = order.deliveryAddress;
@@ -175,7 +159,7 @@ function buildCopyText(order: SnapshotOrder) {
 export default function OrderSuccessPage() {
   const { id } = useParams();
   const location = useLocation();
-  const { orders } = useStore();
+  const { orders, clearCart } = useStore();
   const storeOrder = orders.find(o => String(o.id) === String(id));
 
   const [copied, setCopied] = useState(false);
@@ -205,6 +189,12 @@ export default function OrderSuccessPage() {
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const checkoutStatus = searchParams.get('checkoutStatus') || '';
   const orderRefFromUrl = searchParams.get('orderRef') || '';
+
+  // Payment went through - empty the (session-persisted) cart.
+  useEffect(() => {
+    if (checkoutStatus === 'success') clearCart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkoutStatus]);
 
   const order: SnapshotOrder | null = useMemo(() => {
     if (snapshot) {
@@ -247,85 +237,73 @@ export default function OrderSuccessPage() {
     };
   }, [snapshot, storeOrder, orderRefFromUrl]);
 
+  // Payment is confirmed server-side by the Yoco webhook; poll its status.
+  const [paymentState, setPaymentState] = useState<
+    'checking' | 'paid' | 'processing' | 'problem'
+  >('checking');
+
+  const statusRef = order?.orderRef || orderRefFromUrl;
+
   useEffect(() => {
-    if (!order) return;
-    if (checkoutStatus !== 'success') return;
-
-    const resolvedOrderRef = order.orderRef || orderRefFromUrl;
-    if (!resolvedOrderRef) {
-      console.warn('Skipping customer email: missing orderRef');
+    if (!statusRef) {
+      setPaymentState('processing');
       return;
     }
 
-    const customerEmail = order.customer?.email || '';
-    if (!customerEmail) {
-      console.warn('Skipping customer email: missing customer email');
-      return;
-    }
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 15; // ~45 seconds
 
-    const sentKey = `customerEmailSent:${resolvedOrderRef}`;
-    const alreadySent = sessionStorage.getItem(sentKey);
-
-    if (alreadySent === 'true') {
-      console.log('Customer email already sent for this orderRef:', resolvedOrderRef);
-      return;
-    }
-
-    const items = Array.isArray(order.items) ? order.items : [];
-    const addressLines =
-      order.deliveryMethod === 'courier'
-        ? buildAddressLines(order)
-        : ['Collect in store'];
-
-    const emailPayload = {
-      orderRef: resolvedOrderRef,
-      createdAt: order.createdAt || new Date().toISOString(),
-      amount: safeNumber(order.total),
-      deliveryMethod: order.deliveryMethod === 'collection' ? 'collection' : 'courier',
-      deliveryFee: order.deliveryMethod === 'collection' ? 0 : safeNumber(order.deliveryFee),
-      totalKg: safeNumber(order.totalWeight),
-      customerName: order.customer?.name || 'Customer',
-      customerEmail,
-      customerPhone: order.customer?.phone || '-',
-      collectionNote: order.collectionNote || '',
-      deliveryAddress: addressLines.join('\n'),
-      items: items.map(item => ({
-        name: item.name || 'Product',
-        quantity: safeNumber(item.quantity ?? item.qty, 0),
-        weightKg: safeNumber(item.weightKg, 0),
-        price: safeNumber(item.price, 0),
-      })),
-    };
-
-    const sendCustomerEmail = async () => {
+    const check = async () => {
+      attempts += 1;
       try {
-        console.log('Sending customer order email from OrderSuccessPage:', emailPayload);
+        const res = await fetch(
+          `/.netlify/functions/order-status?orderRef=${encodeURIComponent(statusRef)}`,
+          { cache: 'no-store' }
+        );
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
 
-        const response = await fetch('/.netlify/functions/send-order-completed-email', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(emailPayload),
-        });
-
-        const responseText = await response.text();
-
-        console.log('send-order-completed-email status:', response.status);
-        console.log('send-order-completed-email response:', responseText);
-
-        if (!response.ok) {
-          throw new Error(responseText || 'Failed to send customer email');
+        if (data?.status === 'paid') {
+          setPaymentState('paid');
+          return;
         }
-
-        sessionStorage.setItem(sentKey, 'true');
+        if (data?.status === 'amount_mismatch') {
+          setPaymentState('problem');
+          return;
+        }
       } catch (error) {
-        console.error('Customer email failed on success page:', error);
+        console.error('order-status check failed:', error);
       }
+
+      if (cancelled) return;
+      if (attempts >= maxAttempts) {
+        setPaymentState('processing');
+        return;
+      }
+      window.setTimeout(check, 3000);
     };
 
-    sendCustomerEmail();
-  }, [order, checkoutStatus, orderRefFromUrl]);
+    check();
+    return () => {
+      cancelled = true;
+    };
+  }, [statusRef]);
+
+  // GA4 purchase – only once the Yoco webhook has confirmed payment.
+  useEffect(() => {
+    if (paymentState !== 'paid' || !order || !statusRef) return;
+    const orderItems = Array.isArray(order.items) ? order.items : [];
+    trackPurchase({
+      orderRef: statusRef,
+      total: safeNumber(order.total),
+      shipping: order.deliveryMethod === 'collection' ? 0 : safeNumber(order.deliveryFee),
+      deliveryMethod: order.deliveryMethod || 'courier',
+      items: orderItems.map(item =>
+        toAnalyticsItem(item, safeNumber(item.quantity ?? item.qty, 1))
+      ),
+    });
+  }, [paymentState, order, statusRef]);
 
   const items = Array.isArray(order?.items) ? order.items : [];
 
@@ -440,7 +418,10 @@ export default function OrderSuccessPage() {
                 margin: isMobile ? '0 auto' : 0,
               }}
             >
-              <CheckCircle size={isMobile ? 38 : 46} color="#22c55e" />
+              <CheckCircle
+                size={isMobile ? 38 : 46}
+                color={paymentState === 'paid' ? '#22c55e' : paymentState === 'problem' ? '#ef4444' : '#f59e0b'}
+              />
             </div>
 
             <div style={{ flex: 1, minWidth: 0, textAlign: isMobile ? 'center' : 'left' }}>
@@ -454,7 +435,13 @@ export default function OrderSuccessPage() {
                   lineHeight: 1,
                 }}
               >
-                Payment completed
+                {paymentState === 'paid'
+                  ? 'Payment confirmed'
+                  : paymentState === 'checking'
+                    ? 'Confirming your payment…'
+                    : paymentState === 'problem'
+                      ? 'We need to check your payment'
+                      : 'Payment received – processing'}
               </h1>
 
               <p
@@ -466,9 +453,13 @@ export default function OrderSuccessPage() {
                   maxWidth: isMobile ? '100%' : 760,
                 }}
               >
-                Thank you. Your checkout was completed successfully. The full order details are shown
-                below so they can be copied later if needed, because apparently screenshots are still a
-                business process.
+                {paymentState === 'paid'
+                  ? 'Thank you. Your payment has been confirmed and your order has been sent to our team. The full order details are shown below.'
+                  : paymentState === 'checking'
+                    ? 'Thank you. We are confirming your payment with Yoco – this usually takes a few seconds.'
+                    : paymentState === 'problem'
+                      ? 'Your payment amount did not match the order total. Our team has been notified and will contact you – please keep your order reference.'
+                      : 'Thank you. Yoco is still confirming your payment. You do not need to pay again – our team will receive your order once it is confirmed. Please keep your order reference.'}
               </p>
             </div>
           </div>

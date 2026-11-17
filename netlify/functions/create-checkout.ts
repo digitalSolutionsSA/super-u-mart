@@ -1,5 +1,14 @@
 import type { Handler } from '@netlify/functions';
 import crypto from 'node:crypto';
+import { initOrderStore, saveOrder } from './utils/order-store';
+import {
+  fetchProductsById,
+  productCollectionOnly,
+  productDims,
+  productPrice,
+  productWeight,
+} from './utils/products';
+import { quoteCourier, weightSummary } from './utils/courier';
 
 type CheckoutItem = {
   id?: string | number;
@@ -64,7 +73,11 @@ type NormalizedItem = {
   price: number;
   quantity: number;
   weightKg: number;
+  lengthCm?: number;
+  widthCm?: number;
+  heightCm?: number;
   image: string;
+  collectionOnly?: boolean;
 };
 
 function json(statusCode: number, body: Record<string, unknown>) {
@@ -243,22 +256,78 @@ export const handler: Handler = async (event) => {
       }
     }
 
+    // Never trust prices/weights from the browser: re-price from Supabase.
+    let pricingVerified = false;
+    try {
+      const dbProducts = await fetchProductsById(items.map((item) => item.id));
+      if (dbProducts) {
+        for (const item of items) {
+          const row = dbProducts.get(item.id);
+          if (!row) {
+            return json(400, {
+              error: `"${item.name}" is no longer available. Please remove it from your cart.`,
+            });
+          }
+          const dbPrice = productPrice(row);
+          if (dbPrice <= 0) {
+            return json(400, { error: `"${item.name}" has no valid price.` });
+          }
+          item.price = dbPrice;
+          item.name = safeString(row.name) || item.name;
+          item.weightKg = productWeight(row);
+          Object.assign(item, productDims(row));
+          item.collectionOnly = productCollectionOnly(row);
+        }
+        pricingVerified = true;
+      }
+    } catch (err) {
+      console.error('Product price lookup failed:', err);
+      return json(502, {
+        error: 'Could not verify product prices right now. Please try again.',
+      });
+    }
+
+    if (!pricingVerified) {
+      console.warn(
+        'create-checkout: SUPABASE_URL / key not set - using browser-supplied prices.'
+      );
+    }
+
     const calculatedSubtotalCents = items.reduce((sum, item) => {
       return sum + Math.round(item.price * 100) * item.quantity;
     }, 0);
 
-    const subtotalCents =
-      body.subtotal !== undefined
-        ? toCents(body.subtotal)
-        : calculatedSubtotalCents;
+    const weights = weightSummary(items);
+    const totalWeightKg = weights.actualKg;
+    const hasCollectionOnly = items.some((item) => item.collectionOnly);
 
-    const deliveryFeeCents =
-      deliveryMethod === 'collection'
-        ? 0
-        : toCents(body.deliveryFee);
+    if (deliveryMethod === 'courier' && hasCollectionOnly) {
+      return json(400, {
+        error:
+          'Your cart contains collection-only items. Please choose Collection as the delivery method.',
+      });
+    }
+
+    // Courier fee: live The Courier Guy rate (or table on chargeable weight).
+    let courierSource: string | null = null;
+    let courierService: string | null = null;
+    let deliveryFeeCents = 0;
+    if (deliveryMethod === 'courier') {
+      if (pricingVerified) {
+        const quote = await quoteCourier(address, items);
+        deliveryFeeCents = quote.feeCents;
+        courierSource = quote.source;
+        courierService = quote.serviceLevel;
+      } else {
+        deliveryFeeCents = toCents(body.deliveryFee);
+      }
+    }
+
+    const expectedTotalCents = calculatedSubtotalCents + deliveryFeeCents;
+    const clientDeliveryFeeCents =
+      deliveryMethod === 'collection' ? 0 : toCents(body.deliveryFee);
 
     let totalCents: number;
-
     if (body.amount_cents !== undefined) {
       totalCents = Math.max(0, Math.round(safeNumber(body.amount_cents, 0)));
     } else if (body.total !== undefined) {
@@ -266,22 +335,25 @@ export const handler: Handler = async (event) => {
     } else if (body.amount !== undefined) {
       totalCents = toCents(body.amount);
     } else {
-      totalCents = calculatedSubtotalCents + deliveryFeeCents;
+      totalCents = expectedTotalCents;
     }
 
-    const expectedTotalCents = calculatedSubtotalCents + deliveryFeeCents;
-
-    if (subtotalCents !== calculatedSubtotalCents) {
-      return json(400, {
-        error: 'Subtotal mismatch. Please refresh your cart and try again.',
-        details: {
-          receivedSubtotalCents: subtotalCents,
-          calculatedSubtotalCents,
-        },
-      });
-    }
-
-    if (totalCents !== expectedTotalCents) {
+    // Allow 1c of float rounding per line between browser and server maths.
+    const tolerance = items.length;
+    if (Math.abs(totalCents - expectedTotalCents) > tolerance) {
+      // Only the courier fee moved (e.g. live rate changed): tell the browser
+      // the new fee so the customer can review it before paying.
+      if (
+        body.deliveryFee !== undefined &&
+        clientDeliveryFeeCents !== deliveryFeeCents &&
+        Math.abs(totalCents - clientDeliveryFeeCents - calculatedSubtotalCents) <= tolerance
+      ) {
+        return json(409, {
+          code: 'DELIVERY_FEE_CHANGED',
+          error: `The courier fee has been updated to R${(deliveryFeeCents / 100).toFixed(2)}. Please review your total and pay again.`,
+          deliveryFee: deliveryFeeCents / 100,
+        });
+      }
       return json(400, {
         error: 'Total mismatch. Please refresh your cart and try again.',
         details: {
@@ -293,6 +365,9 @@ export const handler: Handler = async (event) => {
       });
     }
 
+    // Always charge the server-calculated amount.
+    totalCents = expectedTotalCents;
+
     if (totalCents <= 0) {
       return json(400, { error: 'Invalid order total.' });
     }
@@ -301,20 +376,46 @@ export const handler: Handler = async (event) => {
     const orderRef = `sm-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const idempotencyKey = crypto.randomUUID();
 
+    const lineItems = items.map((item) => ({
+      displayName: (item.name || 'Product').slice(0, 100),
+      quantity: item.quantity,
+      pricingDetails: {
+        price: Math.round(item.price * 100),
+      },
+    }));
+
+    if (deliveryFeeCents > 0) {
+      lineItems.push({
+        displayName: 'Courier delivery',
+        quantity: 1,
+        pricingDetails: { price: deliveryFeeCents },
+      });
+    }
+
+    const addressText = address
+      ? [
+          address.streetAddress,
+          address.addressLine2,
+          address.suburb,
+          address.city,
+          address.province,
+          address.postalCode,
+        ]
+          .filter(Boolean)
+          .join(', ')
+      : '';
+
+    // Keep metadata flat and string-valued so Yoco stores/returns it reliably
+    // (it comes back on the payment.succeeded webhook).
     const yocoPayload = {
       amount: totalCents,
-      currency: safeString(body.currency) || 'ZAR',
+      currency: 'ZAR',
       successUrl: `${baseUrl}/order-success?checkoutStatus=success&orderRef=${encodeURIComponent(orderRef)}`,
       cancelUrl: `${baseUrl}/cart?checkoutStatus=cancelled`,
       failureUrl: `${baseUrl}/cart?checkoutStatus=failed`,
-      subtotalAmount: subtotalCents,
-      lineItems: items.map((item) => ({
-  displayName: item.name || 'Product',
-  quantity: item.quantity,
-  pricingDetails: {
-    price: Math.round(item.price * 100),
-  },
-})),
+      // Line items include the courier fee, so they add up to the amount.
+      subtotalAmount: totalCents,
+      lineItems,
       clientReferenceId: orderRef,
       externalId: orderRef,
       metadata: {
@@ -323,17 +424,19 @@ export const handler: Handler = async (event) => {
         customerName: customer.name,
         customerEmail: customer.email,
         customerPhone: customer.phone,
-        totalWeight: safeNumber(body.totalWeight, 0),
-        collectionNote: safeString(body.collectionNote || body.note),
-        deliveryAddress: address,
-        items: items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          sku: item.sku,
-          quantity: item.quantity,
-          price: item.price,
-          weightKg: item.weightKg,
-        })),
+        subtotal: (calculatedSubtotalCents / 100).toFixed(2),
+        deliveryFee: (deliveryFeeCents / 100).toFixed(2),
+        totalWeightKg: totalWeightKg.toFixed(2),
+        chargeableWeightKg: weights.chargeableKg.toFixed(2),
+        courierRate: courierSource
+          ? `${courierSource}${courierService ? ` ${courierService}` : ''}`
+          : '',
+        deliveryAddress: addressText,
+        note: safeString(body.collectionNote || body.note || address?.note).slice(0, 500),
+        items: items
+          .map((item) => `${item.quantity}x ${item.sku || item.id} @ ${item.price.toFixed(2)}`)
+          .join('; ')
+          .slice(0, 1000),
       },
     };
 
@@ -372,9 +475,55 @@ export const handler: Handler = async (event) => {
       });
     }
 
+    if (!yocoData?.redirectUrl) {
+      return json(502, { error: 'Yoco did not return a payment page URL.' });
+    }
+
+    // Record the order as pending; the Yoco webhook marks it paid.
+    try {
+      initOrderStore(event);
+      await saveOrder({
+        orderRef,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        checkoutId: yocoData?.id || null,
+        processingMode: yocoData?.processingMode || null,
+        totalCents,
+        subtotalCents: calculatedSubtotalCents,
+        deliveryFeeCents,
+        totalWeightKg,
+        deliveryMethod,
+        customer,
+        deliveryAddressText: addressText,
+        note: safeString(body.collectionNote || body.note || address?.note),
+        items: items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          sku: item.sku,
+          price: item.price,
+          quantity: item.quantity,
+          weightKg: item.weightKg,
+        })),
+      });
+    } catch (err) {
+      // Don't block payment; the webhook falls back to Yoco metadata.
+      console.error('Failed to save pending order:', err);
+    }
+
     return json(200, {
       ok: true,
       orderRef,
+      subtotal: calculatedSubtotalCents / 100,
+      deliveryFee: deliveryFeeCents / 100,
+      total: totalCents / 100,
+      items: items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        sku: item.sku,
+        price: item.price,
+        quantity: item.quantity,
+        weightKg: item.weightKg,
+      })),
       checkoutId: yocoData?.id || null,
       redirectUrl: yocoData?.redirectUrl || yocoData?.redirect_url || null,
       successUrl: yocoData?.successUrl || null,

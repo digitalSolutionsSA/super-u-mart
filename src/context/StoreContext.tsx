@@ -3,6 +3,10 @@ import { Product, Category, CartItem, Order } from "../types";
 import { defaultCategories } from "../data/seedData";
 import { v4 as uuidv4 } from "uuid";
 import { supabase } from "../lib/supabase";
+import { trackAddToCart, trackRemoveFromCart } from "../lib/analytics";
+
+// Keep in sync with netlify/functions/utils/courier.ts
+const VOLUMETRIC_DIVISOR = 5000;
 
 function calculateCourierFee(totalWeightKg: number) {
   if (totalWeightKg <= 0) return 0;
@@ -39,6 +43,8 @@ interface StoreContextType {
   cartTotal: number;
   cartCount: number;
   cartWeight: number;
+  cartChargeableWeight: number;
+  cartHasCollectionOnly: boolean;
   getDeliveryFee: (deliveryMethod: Order["deliveryMethod"]) => number;
   getOrderTotal: (deliveryMethod: Order["deliveryMethod"]) => number;
 
@@ -154,7 +160,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
   const [loadingCategories, setLoadingCategories] = useState(true);
 
-  const [cart, setCart] = useState<CartItem[]>([]);
+  // Kept in sessionStorage so the cart survives the redirect to Yoco and back
+  // (e.g. when the customer cancels payment).
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const raw = sessionStorage.getItem("sum_cart");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("sum_cart", JSON.stringify(cart));
+    } catch {
+      // storage unavailable - cart just won't persist
+    }
+  }, [cart]);
   const [orders, setOrders] = useState<Order[]>(() => loadLS("sum_orders", []));
 
   const [isAdmin, setIsAdmin] = useState(false);
@@ -400,6 +424,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const addToCart = (product: Product, qty = 1) => {
+    trackAddToCart(product, qty);
     setCart((prev) => {
       const existing = prev.find((i) => i.product.id === product.id);
       if (existing) {
@@ -412,6 +437,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const removeFromCart = (productId: string) => {
+    const line = cart.find((i) => i.product.id === productId);
+    if (line) trackRemoveFromCart(line.product, line.quantity);
     setCart((prev) => prev.filter((i) => i.product.id !== productId));
   };
 
@@ -420,6 +447,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       removeFromCart(productId);
       return;
     }
+    const line = cart.find((i) => i.product.id === productId);
+    if (line && qty > line.quantity) trackAddToCart(line.product, qty - line.quantity);
+    if (line && qty < line.quantity) trackRemoveFromCart(line.product, line.quantity - qty);
     setCart((prev) =>
       prev.map((i) => (i.product.id === productId ? { ...i, quantity: qty } : i))
     );
@@ -443,6 +473,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [cart]
   );
 
+  // Chargeable weight = per unit max(actual, volumetric L×W×H/5000) – the
+  // same rule as netlify/functions/utils/courier.ts. Used for the estimate
+  // shown before the checkout fetches a live The Courier Guy quote.
+  const cartChargeableWeight = useMemo(
+    () =>
+      cart.reduce((sum, i) => {
+        const p: any = i.product;
+        const actual = Number(p.weightKg) || 0;
+        const l = Number(p.lengthCm) || 0;
+        const w = Number(p.widthCm) || 0;
+        const h = Number(p.heightCm) || 0;
+        const volumetric = l && w && h ? (l * w * h) / VOLUMETRIC_DIVISOR : 0;
+        return sum + Math.max(actual, volumetric) * i.quantity;
+      }, 0),
+    [cart]
+  );
+
   const cartHasCollectionOnly = useMemo(
     () => cart.some((item) => isCollectionOnlyProduct(item.product)),
     [cart]
@@ -451,7 +498,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const getDeliveryFee = (deliveryMethod: Order["deliveryMethod"]) => {
     if (deliveryMethod === "collection") return 0;
     if (cartHasCollectionOnly) return 0;
-    return calculateCourierFee(cartWeight);
+    return calculateCourierFee(cartChargeableWeight);
   };
 
   const getOrderTotal = (deliveryMethod: Order["deliveryMethod"]) => {
@@ -506,6 +553,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         cartTotal,
         cartCount,
         cartWeight,
+        cartChargeableWeight,
+        cartHasCollectionOnly,
         getDeliveryFee,
         getOrderTotal,
 

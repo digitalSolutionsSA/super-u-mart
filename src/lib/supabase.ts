@@ -13,5 +13,12 @@ if (!url || !anon) {
   );
 }
 
-// Create the client even if missing, so the app can load and you can see errors in console.
-export const supabase = createClient(url ?? "", anon ?? "");
+export const supabaseConfigured = Boolean(url && anon);
+
+// createClient("") throws "supabaseUrl is required" and blanks the whole app,
+// so fall back to a harmless placeholder: the page still renders and product
+// queries simply fail (logged above) until the env vars are set.
+export const supabase = createClient(
+  url || "https://placeholder.supabase.co",
+  anon || "placeholder-anon-key"
+);

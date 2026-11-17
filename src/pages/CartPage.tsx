@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Trash2, ArrowRight, Truck, Store, ClipboardList } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { useStore } from '../context/StoreContext';
+import { toAnalyticsItem, trackBeginCheckout } from '../lib/analytics';
 
 function getProductImage(product: any) {
   const candidates = [
@@ -124,12 +125,41 @@ export default function CartPage() {
     updateCartQty,
     cartTotal,
     cartWeight,
+    cartChargeableWeight,
+    cartHasCollectionOnly,
     getDeliveryFee,
-    getOrderTotal,
   } = useStore();
 
-  const [step, setStep] = useState<'cart' | 'checkout'>('cart');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const returnStatus = searchParams.get('checkoutStatus');
+  const [paymentNotice, setPaymentNotice] = useState<string | null>(
+    returnStatus === 'cancelled'
+      ? 'Payment was cancelled. Your cart is still here — you can try again when ready.'
+      : returnStatus === 'failed'
+        ? 'Payment failed and you were not charged. Please check your card details and try again.'
+        : null
+  );
+
+  const [step, setStep] = useState<'cart' | 'checkout'>(
+    (returnStatus === 'cancelled' || returnStatus === 'failed') && cart.length > 0
+      ? 'checkout'
+      : 'cart'
+  );
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('courier');
+
+  useEffect(() => {
+    if (returnStatus) {
+      // Drop the query string so a refresh doesn't show the notice again.
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (cartHasCollectionOnly && deliveryMethod === 'courier') {
+      setDeliveryMethod('collection');
+    }
+  }, [cartHasCollectionOnly, deliveryMethod]);
   const [form, setForm] = useState<CheckoutForm>(initialForm);
   const [placing, setPlacing] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -146,8 +176,105 @@ export default function CartPage() {
   const isMobile = screenWidth <= 900;
   const isSmallMobile = screenWidth <= 560;
 
-  const deliveryFee = getDeliveryFee(deliveryMethod);
-  const orderTotal = getOrderTotal(deliveryMethod);
+  // Live courier quote (The Courier Guy rate via the courier-quote function).
+  type CourierQuoteState = {
+    key: string;
+    fee: number;
+    chargeableKg: number;
+    source: string;
+    serviceLevel: string | null;
+  };
+  const [courierQuote, setCourierQuote] = useState<CourierQuoteState | null>(null);
+  const [quoting, setQuoting] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+
+  const quoteKey = JSON.stringify({
+    items: cart.map(i => [i.product.id, i.quantity]),
+    a: [form.streetAddress, form.suburb, form.city, form.province, form.postalCode].map(v => v.trim()),
+  });
+  const addressReady =
+    form.streetAddress.trim() && form.city.trim() && form.province.trim() && form.postalCode.trim();
+
+  useEffect(() => {
+    if (step !== 'checkout' || deliveryMethod !== 'courier' || !cart.length) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setQuoting(true);
+      setQuoteError(null);
+      try {
+        const res = await fetch('/.netlify/functions/courier-quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: cart.map(i => ({ id: i.product.id, quantity: i.quantity })),
+            deliveryAddress: addressReady
+              ? {
+                  streetAddress: form.streetAddress.trim(),
+                  addressLine2: form.addressLine2.trim(),
+                  suburb: form.suburb.trim(),
+                  city: form.city.trim(),
+                  province: form.province.trim(),
+                  postalCode: form.postalCode.trim(),
+                }
+              : null,
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (!res.ok || typeof data?.deliveryFee !== 'number') {
+          throw new Error(data?.error || 'Could not get a courier quote.');
+        }
+        setCourierQuote({
+          key: quoteKey,
+          fee: data.deliveryFee,
+          chargeableKg: Number(data.chargeableKg) || 0,
+          source: data.source,
+          serviceLevel: data.serviceLevel ?? null,
+        });
+      } catch (err: any) {
+        if (!cancelled) {
+          setCourierQuote(null);
+          setQuoteError(err?.message || 'Could not get a courier quote.');
+        }
+      } finally {
+        if (!cancelled) setQuoting(false);
+      }
+    }, 600);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteKey, step, deliveryMethod]);
+
+  const quoteCurrent = courierQuote?.key === quoteKey;
+  const deliveryFee =
+    deliveryMethod === 'collection'
+      ? 0
+      : quoteCurrent && courierQuote
+        ? courierQuote.fee
+        : getDeliveryFee(deliveryMethod);
+  const orderTotal = cartTotal + deliveryFee;
+  const courierQuoteReady =
+    deliveryMethod === 'collection' || (quoteCurrent && !quoting && Boolean(addressReady));
+
+  const courierFeeText =
+    deliveryMethod === 'collection'
+      ? 'R0.00'
+      : step === 'checkout' && quoting
+        ? 'Calculating…'
+        : step === 'checkout' && !addressReady
+          ? `from R${deliveryFee.toFixed(2)}`
+          : `R${deliveryFee.toFixed(2)}`;
+
+  const chargeableKg =
+    quoteCurrent && courierQuote ? courierQuote.chargeableKg : cartChargeableWeight;
+  const chargeableWeightText =
+    chargeableKg > cartWeight + 0.005
+      ? `${chargeableKg.toFixed(2)} kg (volumetric)`
+      : `${cartWeight.toFixed(2)} kg`;
 
   const handleFieldChange = (key: keyof CheckoutForm, value: string) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -184,6 +311,15 @@ export default function CartPage() {
         alert('Please complete your full delivery address.');
         return;
       }
+    }
+
+    if (!courierQuoteReady) {
+      alert(
+        quoteError
+          ? `We couldn't calculate the courier fee: ${quoteError}`
+          : 'Please wait a moment while we calculate the courier fee.'
+      );
+      return;
     }
 
     const normalizedItems = cart
@@ -295,6 +431,15 @@ export default function CartPage() {
         data = null;
       }
 
+      if (response.status === 409 && data?.code === 'DELIVERY_FEE_CHANGED') {
+        setCourierQuote(prev =>
+          prev ? { ...prev, key: quoteKey, fee: Number(data.deliveryFee) || prev.fee } : prev
+        );
+        alert(data.error);
+        setPlacing(false);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(
           data?.error ||
@@ -313,6 +458,7 @@ export default function CartPage() {
       const orderCreatedAt =
         data?.createdAt || data?.created_at || new Date().toISOString();
 
+      // Prefer the server-verified figures (what Yoco will actually charge).
       const orderSnapshot = {
         orderRef: data?.orderRef || data?.order_id || null,
         createdAt: orderCreatedAt,
@@ -324,14 +470,20 @@ export default function CartPage() {
         },
         deliveryAddress,
         collectionNote: deliveryMethod === 'collection' ? form.note.trim() : '',
-        items: normalizedItems,
-        subtotal: safeSubtotal,
-        deliveryFee: safeDeliveryFee,
+        items: Array.isArray(data?.items) && data.items.length ? data.items : normalizedItems,
+        subtotal: typeof data?.subtotal === 'number' ? data.subtotal : safeSubtotal,
+        deliveryFee: typeof data?.deliveryFee === 'number' ? data.deliveryFee : safeDeliveryFee,
         totalWeight: safeTotalWeight,
-        total: safeTotal,
+        total: typeof data?.total === 'number' ? data.total : safeTotal,
       };
 
       sessionStorage.setItem('lastOrderDetails', JSON.stringify(orderSnapshot));
+
+      trackBeginCheckout(
+        cart.map(({ product, quantity }) => toAnalyticsItem(product, quantity)),
+        orderSnapshot.total,
+        deliveryMethod
+      );
 
       window.location.href = redirectUrl;
     } catch (error: any) {
@@ -423,6 +575,35 @@ export default function CartPage() {
         >
           {step === 'cart' ? '🛒 Your Cart' : <><ClipboardList size={isMobile ? 28 : 36} /> Checkout</>}
         </h1>
+
+        {paymentNotice && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: 20,
+              padding: '14px 16px',
+              borderRadius: 12,
+              background: '#fff7ed',
+              border: '1px solid #fed7aa',
+              color: '#9a3412',
+              fontSize: 14,
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 12,
+              alignItems: 'flex-start',
+            }}
+          >
+            <span>{paymentNotice}</span>
+            <button
+              type="button"
+              onClick={() => setPaymentNotice(null)}
+              aria-label="Dismiss"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9a3412', fontWeight: 800 }}
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {step === 'cart' ? (
           <div
@@ -652,13 +833,13 @@ export default function CartPage() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 10, color: '#475569', gap: 12 }}>
                 <span>Total Weight</span>
-                <span style={{ fontWeight: 700, textAlign: 'right' }}>{cartWeight.toFixed(2)} kg</span>
+                <span style={{ fontWeight: 700, textAlign: 'right' }}>{chargeableWeightText}</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 18, color: '#475569', gap: 12 }}>
                 <span>Courier</span>
                 <span style={{ fontWeight: 700, textAlign: 'right' }}>
-                  {deliveryMethod === 'collection' ? 'R0.00' : `R${deliveryFee.toFixed(2)}`}
+                  {courierFeeText}
                 </span>
               </div>
 
@@ -747,20 +928,24 @@ export default function CartPage() {
               >
                 {(['courier', 'collection'] as const).map(method => {
                   const selected = deliveryMethod === method;
+                  const unavailable = method === 'courier' && cartHasCollectionOnly;
 
                   return (
                     <button
                       key={method}
                       type="button"
+                      disabled={unavailable}
+                      title={unavailable ? 'Your cart has collection-only items' : undefined}
                       onClick={() => setDeliveryMethod(method)}
                       style={{
+                        opacity: unavailable ? 0.5 : 1,
                         padding: 18,
                         border: `1.5px solid ${selected ? '#fdba74' : '#e2e8f0'}`,
                         borderRadius: 16,
                         background: selected
                           ? 'linear-gradient(180deg, #fff7ed 0%, #fffbf7 100%)'
                           : '#f8fafc',
-                        cursor: 'pointer',
+                        cursor: unavailable ? 'not-allowed' : 'pointer',
                         textAlign: 'left',
                         display: 'flex',
                         alignItems: 'center',
@@ -800,7 +985,11 @@ export default function CartPage() {
                           {method === 'courier' ? 'Courier' : 'Collection'}
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b' }}>
-                          {method === 'courier' ? 'Delivered to your address' : 'Pick up in Vereeniging'}
+                          {unavailable
+                            ? 'Not available for collection-only items'
+                            : method === 'courier'
+                              ? 'Delivered to your address'
+                              : 'Pick up in Vereeniging'}
                         </div>
                       </div>
                     </button>
@@ -1006,12 +1195,12 @@ export default function CartPage() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 14, color: '#475569', gap: 12 }}>
                   <span>Total Weight</span>
-                  <span style={{ fontWeight: 700, textAlign: 'right' }}>{cartWeight.toFixed(2)} kg</span>
+                  <span style={{ fontWeight: 700, textAlign: 'right' }}>{chargeableWeightText}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 14, color: '#475569', gap: 12 }}>
                   <span>{deliveryMethod === 'courier' ? 'Courier' : 'Collection'}</span>
                   <span style={{ fontWeight: 700, textAlign: 'right' }}>
-                    {deliveryMethod === 'collection' ? 'R0.00' : `R${deliveryFee.toFixed(2)}`}
+                    {courierFeeText}
                   </span>
                 </div>
                 <div
@@ -1070,10 +1259,10 @@ export default function CartPage() {
 
               <button
                 type="submit"
-                disabled={placing}
+                disabled={placing || !courierQuoteReady}
                 style={{
                   width: '100%',
-                  background: placing
+                  background: placing || !courierQuoteReady
                     ? '#94a3b8'
                     : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
                   color: 'white',
@@ -1082,14 +1271,35 @@ export default function CartPage() {
                   padding: '15px 0',
                   fontWeight: 800,
                   fontSize: isMobile ? 16 : 18,
-                  cursor: placing ? 'not-allowed' : 'pointer',
+                  cursor: placing || !courierQuoteReady ? 'not-allowed' : 'pointer',
                   fontFamily: 'Barlow Condensed, sans-serif',
                   marginTop: 8,
-                  boxShadow: placing ? 'none' : '0 14px 24px rgba(249, 115, 22, 0.20)',
+                  boxShadow: placing || !courierQuoteReady ? 'none' : '0 14px 24px rgba(249, 115, 22, 0.20)',
                 }}
               >
-                {placing ? 'Redirecting to payment...' : '🔒 Pay with Yoco — R' + orderTotal.toFixed(2)}
+                {placing
+                  ? 'Redirecting to payment...'
+                  : !courierQuoteReady
+                    ? deliveryMethod === 'courier' && !addressReady
+                      ? 'Enter your address for the courier fee'
+                      : quoteError && !quoting
+                        ? 'Courier fee unavailable'
+                        : 'Calculating courier fee…'
+                    : '🔒 Pay with Yoco — R' + orderTotal.toFixed(2)}
               </button>
+
+              {deliveryMethod === 'courier' && quoteError && !quoting && (
+                <p style={{ margin: '10px 0 0', color: '#b91c1c', fontSize: 13, textAlign: 'center' }}>
+                  {quoteError} Please check your address, or choose Collection.
+                </p>
+              )}
+
+              {deliveryMethod === 'courier' && courierQuoteReady && courierQuote?.source === 'tcg' && (
+                <p style={{ margin: '10px 0 0', color: '#64748b', fontSize: 12, textAlign: 'center' }}>
+                  Courier fee quoted live by The Courier Guy
+                  {courierQuote.serviceLevel ? ` (${courierQuote.serviceLevel})` : ''} for your address.
+                </p>
+              )}
 
               <button
                 type="button"
@@ -1180,12 +1390,12 @@ export default function CartPage() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8, color: '#475569', gap: 12 }}>
                   <span>Total Weight</span>
-                  <span style={{ fontWeight: 700, textAlign: 'right' }}>{cartWeight.toFixed(2)} kg</span>
+                  <span style={{ fontWeight: 700, textAlign: 'right' }}>{chargeableWeightText}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8, color: '#475569', gap: 12 }}>
                   <span>{deliveryMethod === 'courier' ? 'Courier' : 'Collection'}</span>
                   <span style={{ fontWeight: 700, textAlign: 'right' }}>
-                    {deliveryMethod === 'collection' ? 'R0.00' : `R${deliveryFee.toFixed(2)}`}
+                    {courierFeeText}
                   </span>
                 </div>
                 <div
